@@ -1,0 +1,65 @@
+Figm url
+https://www.figma.com/design/DzvpPfGHdd44IgKE5Fujxb/Just-Stay?node-id=114-11677&t=nQaMLnypH103hIiy-0
+
+Admin Link
+http://3.108.235.250:3001/guests-management
+
+mat Link
+https://matall.s3.eu-north-1.amazonaws.com/index.html
+
+AWS INformation
+https://644701781376.signin.aws.amazon.com/console Mangal Mangal@123
+
+Base url
+http://3.111.42.160:4000/api/properties
+
+hotel-stay/
+├─ .env
+├─ .gitignore
+├─ package.json
+├─ README.md
+└─ src/
+   ├─ index.js                 # Entry point
+   ├─ app.js                   # Express app setup
+   │
+   ├─ config/
+   │  └─ index.js              # Environment config, DB connect
+   │
+   ├─ routes/
+   │  ├─ auth.routes.js
+   │  ├─ users.routes.js
+   │  ├─ rooms.routes.js
+   │  └─ bookings.routes.js
+   │
+   ├─ controllers/
+   │  ├─ auth.controller.js
+   │  ├─ users.controller.js
+   │  ├─ rooms.controller.js
+   │  └─ bookings.controller.js
+   │
+   ├─ models/
+   │  ├─ user.model.js
+   │  ├─ room.model.js
+   │  └─ booking.model.js
+   │
+   ├─ middlewares/
+   │  ├─ auth.middleware.js
+   │  ├─ error.middleware.js
+   │  └─ validate.middleware.js
+   │
+   ├─ services/
+   │  ├─ auth.service.js
+   │  ├─ booking.service.js
+   │  └─ room.service.js
+   │
+   ├─ utils/
+   │  ├─ logger.js
+   │  ├─ email.js
+   │  └─ helpers.js
+   │
+   ├─ uploads/                 # (for room images, optional in dev)
+   │
+   └─ tests/
+      ├─ unit/
+      └─ integration/
+hotel = 690720925ccac6d9000cbeb6
