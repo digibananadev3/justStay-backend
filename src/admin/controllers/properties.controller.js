@@ -741,7 +741,7 @@ export const getAllProperties = async (req, res) => {
       success: true,
       data: enhancedProperties,
       pagination: {
-        total: filteredProperties.length,
+        total: total,
         page: parseInt(page),
         limit: parseInt(limit),
         totalPages: Math.ceil(total / limit),
@@ -853,7 +853,6 @@ export const exportProperties = async (req, res) => {
 // Update property by ID
 export const updateProperty = async (req, res) => {
   try {
-    console.log("Welcome to the updateProperty controller", req.params);
     const { id } = req.params;
 
     // Validate Mongo ID
@@ -894,7 +893,6 @@ export const updateProperty = async (req, res) => {
 
     if (propertyType !== undefined)
       updateData.propertyType = propertyType;
-
 
     // Prevent empty update
     if (Object.keys(updateData).length === 0) {
@@ -958,7 +956,6 @@ export const getFeaturedProperties = async (req, res) => {
 
     // Fallback to dummy data if no featured properties found
     if (!featured || featured.length === 0) {
-      console.log("Using dummy featured properties");
       featured = dummyProperties
         .filter((p) => p.isFeatured)
         .slice(0, parseInt(limit));

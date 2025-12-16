@@ -53,6 +53,12 @@ router.get(
 // Export get all properties data
 router.get("/export", exportProperties);
 
+// Get property statistics
+router.get(
+  '/stats',
+  getPropertyStats
+);
+
 // Update single Property by id 
 router.put("/:id", updateProperty);
 
@@ -64,11 +70,7 @@ router.get(
   getPropertyById
 );
 
-// Get property statistics
-router.get(
-  '/stats',
-  getPropertyStats
-);
+
 
 
 // Get all rooms for a specific property with filters
