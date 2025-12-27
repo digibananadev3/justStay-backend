@@ -1,6 +1,7 @@
 import PropertyInfo from "../models/property.model.js";
 import mongoose from "mongoose";
-import { Parser } from "json2csv";
+// import { Parser } from "json2csv";
+import { Parser } from "@json2csv/plainjs";
 
 // -----------------------------
 // Create Property (Hotelier)
