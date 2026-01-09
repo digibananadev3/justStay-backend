@@ -935,7 +935,174 @@ export const updateProperty = async (req, res) => {
   }
 };
 
+// Delete property by ID
+export const deleteProperty = async (req, res) => {
+  try {
+    const { id } = req.params;
 
+    // Validate Mongo ID
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid property ID",
+      });
+    }
+
+    const deletedProperty = await Property.findByIdAndDelete(id);
+
+    if (!deletedProperty) {
+      return res.status(404).json({
+        success: false,
+        message: "Property not found",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Property deleted successfully",
+    });
+  } catch (error) {
+    console.error("Error in deleteProperty:", error);
+    return handleError(res, error, "Failed to delete property");
+  }
+};
+
+
+// Add amenities to a property
+export const addPropertyAmenities = async (req, res) => {
+  try {
+    console.log("Welcome to the add property amenties controller");
+    const { propertyId } = req.params;
+    const { amenities } = req.body;
+
+    // Validate propertyId
+    if (!mongoose.Types.ObjectId.isValid(propertyId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid property ID",
+      });
+    }
+
+    // Validate amenities
+    if (!Array.isArray(amenities) || amenities.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "amenities must be a non-empty array",
+      });
+    }
+
+    // Normalize amenities (trim + remove empty)
+    const normalizedAmenities = amenities
+      .map((a) => String(a).trim())
+      .filter(Boolean);
+
+    if (normalizedAmenities.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid amenities provided",
+      });
+    }
+
+    // Update property (avoid duplicates)
+    const property = await Property.findByIdAndUpdate(
+      propertyId,
+      {
+        $addToSet: {
+          propertyAmenities: { $each: normalizedAmenities },
+        },
+      },
+      {
+        new: true,
+        runValidators: true,
+      }
+    ).select("propertyAmenities");
+
+    if (!property) {
+      return res.status(404).json({
+        success: false,
+        message: "Property not found",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Amenities added successfully",
+      data: property.propertyAmenities,
+    });
+  } catch (error) {
+    console.error("Error in addPropertyAmenities:", error);
+    return handleError(res, error, "Error adding amenities");
+  }
+};
+
+
+// Remove amenities from a property
+export const removePropertyAmenities = async (req, res) => {
+  try {
+    console.log("Welcome to remove property amenities controller");
+
+    const { propertyId } = req.params;
+    const { amenities } = req.body; // array of amenity names
+
+    // Validate propertyId
+    if (!mongoose.Types.ObjectId.isValid(propertyId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid property ID",
+      });
+    }
+
+    // Validate amenities
+    if (!Array.isArray(amenities) || amenities.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "amenities must be a non-empty array",
+      });
+    }
+
+    // Normalize amenities (trim + remove empty)
+    const normalizedAmenities = amenities
+      .map((a) => String(a).trim())
+      .filter(Boolean);
+
+    if (normalizedAmenities.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid amenities provided",
+      });
+    }
+
+    // Remove amenities
+    const property = await Property.findByIdAndUpdate(
+      propertyId,
+      {
+        $pull: {
+          propertyAmenities: { $in: normalizedAmenities },
+        },
+      },
+      {
+        new: true,
+        runValidators: true,
+      }
+    ).select("propertyAmenities");
+
+    if (!property) {
+      return res.status(404).json({
+        success: false,
+        message: "Property not found",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Amenities removed successfully",
+      data: property.propertyAmenities,
+    });
+  } catch (error) {
+    console.error("Error in removePropertyAmenities:", error);
+    return handleError(res, error, "Error removing amenities");
+  }
+};
 
 
 // Get featured properties

@@ -13,6 +13,7 @@ const normalizeAmenity = (a) => ({
 export const listAmenities = async (req, res) => {
   try {
     const { category = 'room', search, page = 1, limit = 200, onlyActive } = req.query;
+        // const { category = '', search, page = 1, limit = 200, onlyActive } = req.query;
     const filter = {};
     if (category) filter.category = category;
     if (onlyActive === 'true') filter.isActive = true;
@@ -24,8 +25,11 @@ export const listAmenities = async (req, res) => {
       Amenity.countDocuments(filter),
     ]);
 
+    console.log("This is the total value of list Amenities", total);
+
     const data = rows.map(normalizeAmenity);
     return res.status(200).json({ success: true, data, pagination: { total, page: parseInt(page), limit: parseInt(limit), totalPages: Math.ceil(total / parseInt(limit)) } });
+    // return res.status(200).json({success: true, data, pagination: })
   } catch (error) {
     return res.status(500).json({ success: false, message: 'Server error', error: error.message });
   }
@@ -61,3 +65,150 @@ export const seedRoomAmenities = async (req, res) => {
     return res.status(500).json({ success: false, message: 'Server error', error: error.message });
   }
 };
+
+
+export const createAmenity = async (req, res) => {
+  try {
+    const { name, category = "room", icon = "", isActive = true } = req.body;
+
+    // Validation
+    if (!name || !name.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: "Amenity name is required",
+      });
+    }
+
+    // Check duplicate (same name + category)
+    const existing = await Amenity.findOne({
+      name: name.trim(),
+      category,
+    });
+
+    if (existing) {
+      return res.status(409).json({
+        success: false,
+        message: "Amenity already exists in this category",
+      });
+    }
+
+    const amenity = await Amenity.create({
+      name: name.trim(),
+      category,
+      icon,
+      isActive,
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: "Amenity created successfully",
+      data: normalizeAmenity(amenity),
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: "Server error",
+      error: error.message,
+    });
+  }
+};
+
+
+export const updateAmenity = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, category, icon, isActive } = req.body;
+
+    if (!id) {
+      return res.status(400).json({
+        success: false,
+        message: "Amenity ID is required",
+      });
+    }
+
+    const amenity = await Amenity.findById(id);
+
+    if (!amenity) {
+      return res.status(404).json({
+        success: false,
+        message: "Amenity not found",
+      });
+    }
+
+    // Prevent duplicate name + category
+    if (name || category) {
+      const duplicate = await Amenity.findOne({
+        _id: { $ne: id },
+        name: name ?? amenity.name,
+        category: category ?? amenity.category,
+      });
+
+      if (duplicate) {
+        return res.status(409).json({
+          success: false,
+          message: "Amenity with same name already exists in this category",
+        });
+      }
+    }
+
+    // Update only provided fields
+    if (typeof name === "string") amenity.name = name.trim();
+    if (typeof category === "string") amenity.category = category.trim();
+    if (typeof icon === "string") amenity.icon = icon.trim();
+    if (typeof isActive === "boolean") amenity.isActive = isActive;
+
+    await amenity.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Amenity updated successfully",
+      data: normalizeAmenity(amenity),
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: "Server error",
+      error: error.message,
+    });
+  }
+};
+
+
+export const deleteAmenity = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!id) {
+      return res.status(400).json({
+        success: false,
+        message: "Amenity ID is required",
+      });
+    }
+
+    const amenity = await Amenity.findById(id);
+
+    if (!amenity) {
+      return res.status(404).json({
+        success: false,
+        message: "Amenity not found",
+      });
+    }
+
+    // Soft delete
+    amenity.isActive = false;
+    await amenity.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Amenity deleted successfully",
+      data: normalizeAmenity(amenity),
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: "Server error",
+      error: error.message,
+    });
+  }
+};
+

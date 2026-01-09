@@ -30,6 +30,9 @@ import {
   updateReviewPublishStatus,
   deleteReview,
   updateProperty,
+  deleteProperty,
+  addPropertyAmenities,
+  removePropertyAmenities,
 } from '../controllers/properties.controller.js';
 
 const router = express.Router();
@@ -59,8 +62,24 @@ router.get(
   getPropertyStats
 );
 
+
+// routes/admin/property.routes.js
+router.post(
+  "/amenities/:propertyId",
+  addPropertyAmenities
+);
+
+
+router.delete(
+  "/amenities/:propertyId",
+  removePropertyAmenities
+);
+
+
 // Update single Property by id 
 router.put("/:id", updateProperty);
+
+router.delete("/:id", deleteProperty);
 
 
 
