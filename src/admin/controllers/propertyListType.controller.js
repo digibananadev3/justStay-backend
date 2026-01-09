@@ -1,19 +1,55 @@
+import mongoose from 'mongoose';
 import PropertyListType from '../../models/propertyListType.model.js';
 import PropertyType from '../../models/propertyType.model.js';
 
+
+
+
+
 // Get all property list types
+
+// export const getPropertyListTypes = async (req, res) => {
+//   try {
+//     const { propertyTypeId, isActive } = req.query;
+//     const query = {};
+ 
+//     if (propertyTypeId) query.propertyTypeId = propertyTypeId;
+//     if (isActive === 'true' || isActive === 'false') query.isActive = isActive === 'true';
+ 
+//     const items = await PropertyListType.find(query)
+//       .populate('propertyTypeId', 'name')
+//       .sort({ PropertyListTypeName: 1 })
+//       .lean();
+ 
+//     return res.status(200).json({ success: true, data: items });
+//   } catch (error) {
+//     console.error('Error fetching property list types:', error);
+//     return res.status(500).json({ success: false, message: 'Failed to fetch property list types', error: process.env.NODE_ENV === 'development' ? error.message : undefined });
+//   }
+// };
+
+
+
 export const getPropertyListTypes = async (req, res) => {
   try {
-    const { propertyTypeId, isActive } = req.query;
+    console.log("This is the value", req.query);
+    const { propertyName, isActive } = req.query;
+    console.log("This is the value of the property", propertyName);
     const query = {};
+    
+    if (propertyName) query.propertyTypeName = propertyName;
 
-    if (propertyTypeId) query.propertyTypeId = propertyTypeId;
     if (isActive === 'true' || isActive === 'false') query.isActive = isActive === 'true';
+    console.log("query", query);
 
+
+    // const items = await PropertyListType.find(query)
     const items = await PropertyListType.find(query)
-      .populate('propertyTypeId', 'name')
+      .populate('propertyTypeId')
       .sort({ PropertyListTypeName: 1 })
       .lean();
+
+      console.log("items", items);
 
     return res.status(200).json({ success: true, data: items });
   } catch (error) {
