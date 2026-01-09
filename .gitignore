@@ -96,7 +96,7 @@ Thumbs.db
 # Build output
 build
 dist
-tmp
+tmp 
 temp
 
 # Logs and temp files

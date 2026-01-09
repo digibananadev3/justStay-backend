@@ -4,7 +4,10 @@ import PropertyRoom from "../../models/propertyRoom.model.js";
 import RoomBooking from "../../models/roomBooking.model.js";
 import Review from "../../models/review.model.js";
 import mongoose from "mongoose";
-import { Parser } from "json2csv";
+// import { Parser } from "json2csv";
+
+import { Parser } from "@json2csv/plainjs";
+
 import {
   calculatePropertyRatings,
   getPropertyRoomCounts,

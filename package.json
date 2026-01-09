@@ -1,18 +1,23 @@
 {
   "name": "juststay",
   "version": "1.0.0",
-  "description": "",
+  "description": "JustStay Node API",
   "license": "ISC",
   "author": "",
   "type": "module",
-  "main": "index.js",
+  "main": "src/index.js",
+  "engines": {
+    "node": ">=24 <25"
+  },
   "scripts": {
     "start": "node src/index.js",
     "dev": "nodemon src/index.js",
     "lint": "eslint .",
-    "test": "jest --watchAll"
+    "test": "jest --watchAll",
+    "postinstall": "echo \"Dependencies installed successfully\""
   },
   "dependencies": {
+    "@json2csv/plainjs": "^7.0.6",
     "bcrypt": "^6.0.0",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
@@ -23,7 +28,6 @@
     "express-validator": "^7.3.0",
     "helmet": "^8.1.0",
     "joi": "^18.0.1",
-    "json2csv": "^6.0.0-alpha.2",
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.19.2",
     "morgan": "^1.10.1",
