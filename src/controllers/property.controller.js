@@ -21,13 +21,10 @@ export const createOrUpdateProperty = async (req, res) => {
       property = await PropertyInfo.findById(propertyId);
       if (!property) {
         return res.status(404).json({ message: "Property not found" });
-      }
-
-      
+      }     
 
       Object.assign(property, req.body); // merge updates
       await property.save();
-
       return res.status(200).json({
         message: "Property updated successfully",
         property,
@@ -64,6 +61,7 @@ export const getAllProperties = async (req, res) => {
 // -----------------------------
 export const getPropertyById = async (req, res) => {
   try {
+   
     const property = await PropertyInfo.findById(req.params.id).populate("userId", "firstName lastName email phone role");
     if (!property) return res.status(404).json({ message: "Property not found" });
 
