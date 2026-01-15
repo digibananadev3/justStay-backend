@@ -12,15 +12,15 @@ import PropertyType from '../../models/propertyType.model.js';
 //   try {
 //     const { propertyTypeId, isActive } = req.query;
 //     const query = {};
- 
+
 //     if (propertyTypeId) query.propertyTypeId = propertyTypeId;
 //     if (isActive === 'true' || isActive === 'false') query.isActive = isActive === 'true';
- 
+
 //     const items = await PropertyListType.find(query)
 //       .populate('propertyTypeId', 'name')
 //       .sort({ PropertyListTypeName: 1 })
 //       .lean();
- 
+
 //     return res.status(200).json({ success: true, data: items });
 //   } catch (error) {
 //     console.error('Error fetching property list types:', error);
@@ -33,11 +33,10 @@ import PropertyType from '../../models/propertyType.model.js';
 export const getPropertyListTypes = async (req, res) => {
   try {
     console.log("This is the value", req.query);
-    const { propertyName, isActive } = req.query;
-    console.log("This is the value of the property", propertyName);
+    const { propertyTypeId, isActive } = req.query;
+    console.log("This is the value of the property", propertyTypeId);
     const query = {};
-    
-    if (propertyName) query.propertyTypeName = propertyName;
+    if (propertyTypeId) query.propertyTypeId = propertyTypeId;
 
     if (isActive === 'true' || isActive === 'false') query.isActive = isActive === 'true';
     console.log("query", query);
@@ -49,7 +48,7 @@ export const getPropertyListTypes = async (req, res) => {
       .sort({ PropertyListTypeName: 1 })
       .lean();
 
-      console.log("items", items);
+    console.log("items", items);
 
     return res.status(200).json({ success: true, data: items });
   } catch (error) {
@@ -76,7 +75,7 @@ export const createPropertyListType = async (req, res) => {
   try {
     const { propertyTypeId, PropertyListTypeName, description, icon } = req.body;
 
-    
+
     // uniqueness per type + name (case-insensitive)
     const existing = await PropertyListType.findOne({
       propertyTypeId,
