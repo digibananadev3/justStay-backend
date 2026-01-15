@@ -33,11 +33,11 @@ import PropertyType from '../../models/propertyType.model.js';
 export const getPropertyListTypes = async (req, res) => {
   try {
     console.log("This is the value", req.query);
-    const { propertyName, isActive } = req.query;
-    console.log("This is the value of the property", propertyName);
+    const { propertyTypeId, isActive } = req.query;
+    console.log("This is the value of the property", propertyTypeId);
     const query = {};
     
-    if (propertyName) query.propertyTypeName = propertyName;
+    if (propertyTypeId) query.propertyTypeId = propertyTypeId;
 
     if (isActive === 'true' || isActive === 'false') query.isActive = isActive === 'true';
     console.log("query", query);

@@ -3,14 +3,19 @@ export const uploadFiles = async (req, res) => {
     if (!req.files || req.files.length === 0) {
       return res.status(400).json({ message: "No files uploaded" });
     }
-
     const type = req.body.type || "photo";
 
     // Generate URLs (you can replace this with S3 or Cloudinary URLs later)
-    const urls = req.files.map((file) => ({
+    // const urls = req.files.map((file) => ({
+    //   type,
+    //   key: file.fieldname,
+    //   url: `${req.protocol}:/${req.get("host")}/${file.path}`,
+    // }));
+
+     const urls = req.files.map((file) => ({
       type,
       key: file.fieldname,
-      url: `${req.protocol}://${req.get("host")}/${file.path}`,
+      url: `${req.protocol}://${req.get("host")}/uploads/photos/${file.filename}`,
     }));
 
     res.status(200).json({
