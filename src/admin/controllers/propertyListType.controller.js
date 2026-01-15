@@ -36,7 +36,8 @@ export const getPropertyListTypes = async (req, res) => {
     const { propertyTypeId, isActive } = req.query;
     console.log("This is the value of the property", propertyTypeId);
     const query = {};
-    if (propertyTypeId) query.propertyTypeId = propertyTypeId;
+    
+    if (propertyName) query.propertyTypeName = propertyName;
 
     if (isActive === 'true' || isActive === 'false') query.isActive = isActive === 'true';
     console.log("query", query);

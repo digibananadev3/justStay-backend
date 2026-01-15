@@ -334,8 +334,11 @@ export const getPropertyDocuments = async (req, res) => {
 // Add documents (array)
 export const addPropertyDocuments = async (req, res) => {
   try {
+    console.log("Coming to the add Property Document");
     const { propertyId } = req.params;
     const { documents = [] } = req.body;
+    console.log("This is the value of the propertyId", req.params);
+    console.log("This is the value of the documents", documents);
     if (!Array.isArray(documents) || documents.length === 0) {
       return res
         .status(400)
@@ -490,6 +493,8 @@ export const addPropertyMediaPhotos = async (req, res) => {
   try {
     const { propertyId } = req.params;
     const { photos = [] } = req.body;
+
+    console.log("This is the photos of the addPropertyMediaPhotos", photos, req.body);
     if (!Array.isArray(photos) || photos.length === 0) {
       return res
         .status(400)
