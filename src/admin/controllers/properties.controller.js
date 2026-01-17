@@ -468,7 +468,8 @@ export const deletePropertyDocument = async (req, res) => {
 export const getPropertyMediaSummary = async (req, res) => {
   try {
     const { propertyId } = req.params;
-    const property = await Property.findById(propertyId)
+    // const property = await Property.findById(propertyId)
+    const property = await Property.findOne({ _id: propertyId, isDeleted: false })
       .select("photos videos")
       .lean();
     if (!property) {
@@ -677,7 +678,8 @@ export const getAllProperties = async (req, res) => {
       sortOrder = "desc",
     } = req.query;
 
-    const query = {};
+    // const query = {};
+    const query = { isDeleted: false };
 
     // Build query
     if (search) {
@@ -786,7 +788,9 @@ export const exportProperties = async (req, res) => {
       sortOrder = "desc",
     } = req.query;
 
-    const query = {};
+    // const query = {};
+    const query = { isDeleted: false };
+
 
     if (search) {
       const orConditions = [
@@ -953,11 +957,12 @@ export const updateProperty = async (req, res) => {
 };
 
 // Delete property by ID
+
+
 export const deleteProperty = async (req, res) => {
   try {
     const { id } = req.params;
 
-    // Validate Mongo ID
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({
         success: false,
@@ -965,24 +970,31 @@ export const deleteProperty = async (req, res) => {
       });
     }
 
-    const deletedProperty = await Property.findByIdAndDelete(id);
+    const property = await Property.findById(id);
 
-    if (!deletedProperty) {
+    if (!property) {
       return res.status(404).json({
         success: false,
         message: "Property not found",
       });
     }
 
+    // ---- SOFT DELETE ----
+    property.isDeleted = true;
+    property.deletedAt = new Date();
+    await property.save();
+
     return res.status(200).json({
       success: true,
-      message: "Property deleted successfully",
+      message: "Property deleted successfully (soft delete)",
     });
+
   } catch (error) {
     console.error("Error in deleteProperty:", error);
     return handleError(res, error, "Failed to delete property");
   }
 };
+
 
 
 // Add amenities to a property
@@ -1132,7 +1144,7 @@ export const getFeaturedProperties = async (req, res) => {
     if (amenities) {
       featured = await getPropertiesByAmenities(amenities, parseInt(limit));
     } else {
-      featured = await Property.find({ isFeatured: true })
+      featured = await Property.find({ isFeatured: true, isDeleted: false })
         .limit(parseInt(limit))
         .populate("userId", "firstName lastName")
         .lean();
@@ -1184,29 +1196,38 @@ export const getPropertyStats = async (req, res) => {
       recentProperties,
     ] = await Promise.all([
       // Total properties count
-      Property.countDocuments(),
+      // Property.countDocuments(),
+            Property.countDocuments({ isDeleted: false }),
 
       // Properties grouped by status
-      Property.aggregate([
+      // Property.aggregate([
+      //   { $group: { _id: "$status", count: { $sum: 1 } } },
+      //   { $sort: { count: -1 } },
+      // ]),
+
+        Property.aggregate([
+        { $match: { isDeleted: false } },
         { $group: { _id: "$status", count: { $sum: 1 } } },
         { $sort: { count: -1 } },
       ]),
 
       // Properties grouped by type
       Property.aggregate([
+        { $match: { isDeleted: false } },
         { $group: { _id: "$propertyType", count: { $sum: 1 } } },
         { $sort: { count: -1 } },
       ]),
 
       // Properties grouped by city (top 5)
       Property.aggregate([
+        { $match: { isDeleted: false } },
         { $group: { _id: "$location.city", count: { $sum: 1 } } },
         { $sort: { count: -1 } },
         { $limit: 5 },
       ]),
 
       // Recent properties
-      Property.find()
+      Property.find({ isDeleted: false })
         .sort({ createdAt: -1 })
         .limit(5)
         .select("basicPropertyDetails.name location.city status createdAt")
@@ -1261,10 +1282,16 @@ export const getPropertyStats = async (req, res) => {
 export const getPropertyById = async (req, res) => {
   try {
     const { id } = req.params;
-    const property = await Property.findById(id).populate(
+    // const property = await Property.findById(id).populate(
+    //   "userId",
+    //   "firstName lastName"
+    // );
+
+        const property = await Property.findOne({ _id: id, isDeleted: false }).populate(
       "userId",
       "firstName lastName"
     );
+    
     const propertyRoom = await PropertyRoom.find({ propertyId: id });
     if (!property) {
       return res

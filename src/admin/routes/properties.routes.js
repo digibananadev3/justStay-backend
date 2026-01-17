@@ -79,7 +79,7 @@ router.delete(
 // Update single Property by id 
 router.put("/:id", updateProperty);
 
-router.delete("/:id", deleteProperty);
+router.delete("/:id/delete", deleteProperty);
 
 
 

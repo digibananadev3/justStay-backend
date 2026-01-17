@@ -4,7 +4,6 @@ export const uploadFiles = async (req, res) => {
       return res.status(400).json({ message: "No files uploaded" });
     }
 
-    console.log("THis is the value of the photos", req.files);
     const type = req.body.type || "photo";
 
       // Decide folder based on type

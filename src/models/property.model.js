@@ -167,6 +167,18 @@ const propertySchema = new Schema(
 
     trainingAndGuidelines: { type: String, default: "" }, // long text / log
 
+    // -------- SOFT DELETE FIELDS --------
+    isDeleted: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    deletedAt: {
+      type: Date,
+      default: null,
+    },
+    // ------------------------------------
+
   },
   { timestamps: true } // createdAt & updatedAt
 );
