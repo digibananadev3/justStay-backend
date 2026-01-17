@@ -353,11 +353,15 @@ export const addPropertyDocuments = async (req, res) => {
       expiresAt: d.expiresAt,
     }));
 
+    console.log("This is the value of the docs of the add property document", docs);
+
     const updated = await Property.findByIdAndUpdate(
       propertyId,
       { $push: { documents: { $each: docs } } },
       { new: true, runValidators: true }
     ).select("documents");
+
+    console.log("This is the value of the updated of the add property document", updated);
 
     if (!updated)
       return res
@@ -376,6 +380,9 @@ export const updatePropertyDocument = async (req, res) => {
     const { propertyId, documentId } = req.params;
     const { name, documentType, documentUrl, status, expiresAt } = req.body;
 
+
+    console.log("This is the value of the body of the updatePropertyDocument", req.body);
+
     const property = await Property.findById(propertyId);
     if (!property)
       return res
@@ -383,6 +390,8 @@ export const updatePropertyDocument = async (req, res) => {
         .json({ success: false, message: "Property not found" });
 
     const doc = property.documents.id(documentId);
+
+    console.log("This is the value of the doc of the updatePropertyDocument", doc);
     if (!doc)
       return res
         .status(404)

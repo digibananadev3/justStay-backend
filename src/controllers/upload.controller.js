@@ -3,7 +3,13 @@ export const uploadFiles = async (req, res) => {
     if (!req.files || req.files.length === 0) {
       return res.status(400).json({ message: "No files uploaded" });
     }
+
+    console.log("THis is the value of the photos", req.files);
     const type = req.body.type || "photo";
+
+      // Decide folder based on type
+    const folder =
+      type === "document" ? "documents" : "photos";
 
     // Generate URLs (you can replace this with S3 or Cloudinary URLs later)
     // const urls = req.files.map((file) => ({
@@ -15,8 +21,9 @@ export const uploadFiles = async (req, res) => {
      const urls = req.files.map((file) => ({
       type,
       key: file.fieldname,
-      url: `${req.protocol}://${req.get("host")}/uploads/photos/${file.filename}`,
+      url: `${req.protocol}://${req.get("host")}/uploads/${folder}/${file.filename}`,
     }));
+
 
     res.status(200).json({
       message: `${req.files.length} ${type}(s) uploaded successfully`,
