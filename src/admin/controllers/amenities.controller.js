@@ -12,7 +12,7 @@ const normalizeAmenity = (a) => ({
 
 export const listAmenities = async (req, res) => {
   try {
-    const { category = 'room', search, page = 1, limit = 200, onlyActive } = req.query;
+    const { category = '', search, page = 1, limit = 200, onlyActive } = req.query;
         // const { category = '', search, page = 1, limit = 200, onlyActive } = req.query;
     const filter = {};
     if (category) filter.category = category;
@@ -212,3 +212,44 @@ export const deleteAmenity = async (req, res) => {
   }
 };
 
+
+
+export const fetchAmenitiesStats = async (req, res) => {
+  try {
+    const total = await Amenity.countDocuments({});
+    const active = await Amenity.countDocuments({ isActive: true });
+    const inactive = await Amenity.countDocuments({ isActive: false });
+
+    const roomAmenities = await Amenity.countDocuments({ category: "room" });
+    const propertyAmenities = await Amenity.countDocuments({ category: "property" });
+
+    const activeRoomAmenities = await Amenity.countDocuments({
+      category: "room",
+      isActive: true,
+    });
+
+    const activePropertyAmenities = await Amenity.countDocuments({
+      category: "property",
+      isActive: true,
+    });
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        totalAmenities: total,
+        activeAmenities: active,
+        inactiveAmenities: inactive,
+        roomAmenities,
+        propertyAmenities,
+        activeRoomAmenities,
+        activePropertyAmenities,
+      },
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: "Server error",
+      error: error.message,
+    });
+  }
+};
