@@ -54,6 +54,34 @@ export const getPropertyTypes = async (req, res) => {
   }
 };
 
+
+
+// Get property type statistics
+export const fetchPropertyTypeStats = async (req, res) => {
+  try {
+    const total = await PropertyType.countDocuments();
+    const active = await PropertyType.countDocuments({ isActive: true });
+    const inactive = await PropertyType.countDocuments({ isActive: false });
+
+    res.status(200).json({
+      success: true,
+      data: {
+        totalPropertyTypes: total,
+        activePropertyTypes: active,
+        inactivePropertyTypes: inactive
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching property type stats:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to fetch property type stats',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+};
+
+
 // Add a new property type
 export const addPropertyType = async (req, res) => {
   try {
@@ -158,32 +186,69 @@ export const updatePropertyType = async (req, res) => {
 };
 
 // Delete a property type
+// export const deletePropertyType = async (req, res) => {
+//   try {
+//     const { id } = req.params;
+
+//     // Check if the property type exists
+//     const propertyType = await PropertyType.findById(id);
+//     if (!propertyType) {
+//       return res.status(404).json({
+//         success: false,
+//         message: 'Property type not found'
+//       });
+//     }
+
+//     // Delete the property type
+//     await PropertyType.findByIdAndDelete(id);
+    
+//     res.status(200).json({
+//       success: true,
+//       message: 'Property type deleted successfully'
+//     });
+//   } catch (error) {
+//     console.error('Error deleting property type:', error);
+//     return res.status(500).json({
+//       success: false,
+//       message: 'Failed to delete property type',
+//       error: process.env.NODE_ENV === 'development' ? error.message : undefined
+//     });
+//   }
+// };
+
+
+
 export const deletePropertyType = async (req, res) => {
   try {
     const { id } = req.params;
 
-    // Check if the property type exists
     const propertyType = await PropertyType.findById(id);
+
     if (!propertyType) {
       return res.status(404).json({
         success: false,
-        message: 'Property type not found'
+        message: "Property type not found",
       });
     }
 
-    // Delete the property type
-    await PropertyType.findByIdAndDelete(id);
-    
-    res.status(200).json({
+    // ✅ SOFT DELETE — only deactivate
+    propertyType.isActive = false;
+    await propertyType.save();
+
+    return res.status(200).json({
       success: true,
-      message: 'Property type deleted successfully'
+      message: "Property type deleted successfully",
     });
   } catch (error) {
-    console.error('Error deleting property type:', error);
+    console.error("Error deleting property type:", error);
     return res.status(500).json({
       success: false,
-      message: 'Failed to delete property type',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      message: "Failed to delete property type",
+      error:
+        process.env.NODE_ENV === "development"
+          ? error.message
+          : undefined,
     });
   }
 };
+

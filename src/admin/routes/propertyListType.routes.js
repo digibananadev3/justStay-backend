@@ -4,12 +4,15 @@ import {
   getPropertyListTypeById,
   createPropertyListType,
   updatePropertyListType,
-  deletePropertyListType
+  deletePropertyListType,
+  fetchPropertyListTypesStats
 } from '../controllers/propertyListType.controller.js';
+import { fetchPropertyTypeStats } from '../controllers/propertyType.controller.js';
 
 const router = express.Router();
 
 router.get('/', getPropertyListTypes);
+router.get('/property-type-list-stats', fetchPropertyListTypesStats)
 router.get('/:id', getPropertyListTypeById);
 router.post('/', createPropertyListType);
 router.put('/:id', updatePropertyListType);

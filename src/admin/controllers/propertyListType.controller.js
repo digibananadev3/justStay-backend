@@ -58,6 +58,33 @@ export const getPropertyListTypes = async (req, res) => {
   }
 };
 
+
+
+// Fetch Property List Type Stats
+export const fetchPropertyListTypesStats = async (req, res) => {
+  try {
+    const totalListTypes = await PropertyListType.countDocuments();
+    const activeListTypes = await PropertyListType.countDocuments({ isActive: true });
+    const inactiveListTypes = await PropertyListType.countDocuments({ isActive: false });
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        totalListTypes,
+        activeListTypes,
+        inactiveListTypes,
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching Property List Type stats:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch stats",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
+  }
+};
+
 // Get one by id
 export const getPropertyListTypeById = async (req, res) => {
   try {
@@ -72,9 +99,33 @@ export const getPropertyListTypeById = async (req, res) => {
 };
 
 // Create
+// export const createPropertyListType = async (req, res) => {
+//   try {
+//     const { propertyTypeId,  PropertyListTypeName, description, icon } = req.body;
+
+    
+//     // uniqueness per type + name (case-insensitive)
+//     const existing = await PropertyListType.findOne({
+//       propertyTypeId,
+//       PropertyListTypeName: { $regex: new RegExp(`^${PropertyListTypeName}$`, 'i') }
+//     });
+//     if (existing) return res.status(400).json({ success: false, message: 'PropertyListTypeName already exists for this property type' });
+
+//     const created = await PropertyListType.create({ propertyTypeId, PropertyListTypeName, description, icon });
+//     const populated = await created.populate('propertyTypeId', 'name');
+
+//     return res.status(201).json({ success: true, message: 'Created successfully', data: populated });
+//   } catch (error) {
+//     console.error('Error creating property list type:', error);
+//     return res.status(500).json({ success: false, message: 'Failed to create property list type', error: process.env.NODE_ENV === 'development' ? error.message : undefined });
+//   }
+// };
+
+
+
 export const createPropertyListType = async (req, res) => {
   try {
-    const { propertyTypeId, PropertyListTypeName, description, icon } = req.body;
+    const { propertyTypeId, propertyTypeName, PropertyListTypeName, description, icon } = req.body;
 
     
     // uniqueness per type + name (case-insensitive)
@@ -84,7 +135,7 @@ export const createPropertyListType = async (req, res) => {
     });
     if (existing) return res.status(400).json({ success: false, message: 'PropertyListTypeName already exists for this property type' });
 
-    const created = await PropertyListType.create({ propertyTypeId, PropertyListTypeName, description, icon });
+    const created = await PropertyListType.create({ propertyTypeId, propertyTypeName, PropertyListTypeName, description, icon });
     const populated = await created.populate('propertyTypeId', 'name');
 
     return res.status(201).json({ success: true, message: 'Created successfully', data: populated });
@@ -93,6 +144,7 @@ export const createPropertyListType = async (req, res) => {
     return res.status(500).json({ success: false, message: 'Failed to create property list type', error: process.env.NODE_ENV === 'development' ? error.message : undefined });
   }
 };
+
 
 // Update
 export const updatePropertyListType = async (req, res) => {
@@ -147,3 +199,6 @@ export const deletePropertyListType = async (req, res) => {
     return res.status(500).json({ success: false, message: 'Failed to delete property list type', error: process.env.NODE_ENV === 'development' ? error.message : undefined });
   }
 };
+
+
+

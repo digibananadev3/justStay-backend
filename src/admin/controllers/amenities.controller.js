@@ -194,6 +194,15 @@ export const deleteAmenity = async (req, res) => {
       });
     }
 
+
+    console.log("This is the value of the ammenity isActive value", amenity.isActive);
+    if(amenity?.isActive === false){
+      return res.status(400).json({
+        success : true,
+        message : "Amenity already deleted"
+      });
+    }
+
     // Soft delete
     amenity.isActive = false;
     await amenity.save();

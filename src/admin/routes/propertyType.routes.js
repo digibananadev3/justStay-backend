@@ -4,7 +4,8 @@ import {
   getPropertyTypeById,
   addPropertyType,
   updatePropertyType,
-  deletePropertyType
+  deletePropertyType,
+  fetchPropertyTypeStats
 } from '../controllers/propertyType.controller.js';
 
 const router = express.Router();
@@ -12,11 +13,21 @@ const router = express.Router();
 // Get all property types
 router.get('/', getPropertyTypes);
 
+
+
+// Get Property type stats
+router.get(
+  '/property-types-stats',
+  fetchPropertyTypeStats
+)
+
 // Get property type by ID
 router.get(
   '/:id',
   getPropertyTypeById
 );
+
+
 
 // Add a new property type
 router.post(
