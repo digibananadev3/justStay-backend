@@ -32,13 +32,40 @@ export const getPropertyTypeById = async (req, res) => {
 export const getPropertyTypes = async (req, res) => {
   try {
     const { isActive } = req.query;
-    const query = {};
+    let query = {};
     
-    if (isActive === 'true' || isActive === 'false') {
-      query.isActive = isActive === 'true';
+    // if (isActive === 'true' || isActive === 'false') {
+    //   query.isActive = isActive === 'true';
+    // }
+
+    console.log("This is the value of the isActive", isActive);
+
+    if (isActive === "true") {
+      query = { isActive: true };
+    } 
+    else if (isActive === "false") {
+      query = { isActive: false };
+    } 
+    else {
+      console.log("Coming to the else block")
+      // DEFAULT: only active
+      query = { isActive: true };
     }
     
+    console.log("query", query);
+    // If user sends isActive, use it
+    if (isActive === "true" || isActive === "false") {
+      query.isActive = isActive === "true";
+    } 
+    // If user DOES NOT send isActive → default to true
+    else {
+      query.isActive = true;
+    }
+
+    
     const propertyTypes = await PropertyType.find(query).sort({ name: 1 });
+
+    console.log("property type", propertyTypes[0]?.isActive, typeof propertyTypes[0]?.isActive);
     
     res.status(200).json({
       success: true,

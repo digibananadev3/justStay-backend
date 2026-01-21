@@ -76,6 +76,13 @@ const propertySchema = new Schema(
         documentType: { type: String, enum: documentTypes, required: true },
         documentUrl: { type: String, required: true },
         status: { type: String, enum: ['Pending', 'Verified', 'Rejected'], default: 'Pending' },
+
+        // ADD THIS
+        remark: {
+          type: String,
+          default: "",
+          trim: true
+        },
         uploadedAt: { type: Date, default: Date.now },
         expiresAt: { type: Date }
       },

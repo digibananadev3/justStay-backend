@@ -378,33 +378,61 @@ export const addPropertyDocuments = async (req, res) => {
 export const updatePropertyDocument = async (req, res) => {
   try {
     const { propertyId, documentId } = req.params;
-    const { name, documentType, documentUrl, status, expiresAt } = req.body;
+    const { name, documentType, documentUrl, status, expiresAt, remark } = req.body;
 
 
-    console.log("This is the value of the body of the updatePropertyDocument", req.body);
+    // console.log("This is the value of the body of the updatePropertyDocument", req.body);
 
     const property = await Property.findById(propertyId);
     if (!property)
-      return res
-        .status(404)
-        .json({ success: false, message: "Property not found" });
+      return res.status(404).json({ success: false, message: "Property not found" });
 
     const doc = property.documents.id(documentId);
 
-    console.log("This is the value of the doc of the updatePropertyDocument", doc);
+    // console.log("This is the value of the doc of the updatePropertyDocument", doc);
     if (!doc)
-      return res
-        .status(404)
-        .json({ success: false, message: "Document not found" });
+      return res.status(404).json({ success: false, message: "Document not found" });
+
 
     if (name !== undefined) doc.name = name;
     if (documentType !== undefined) doc.documentType = documentType;
     if (documentUrl !== undefined) doc.documentUrl = documentUrl;
-    if (status !== undefined) doc.status = status;
+    // if (status !== undefined) doc.status = status;
     if (expiresAt !== undefined) doc.expiresAt = expiresAt;
 
+    if (status !== undefined) {
+
+      // Pending → clear remark
+      if (status === "Pending") {
+        doc.status = "Pending";
+        doc.remark = "";
+      }
+
+      // Verified or Rejected → require remark
+      if (status === "Verified" || status === "Rejected") {
+        if (!remark || remark.trim() === "") {
+          return res.status(400).json({
+            success: false,
+            message: `Remark is required when status is ${status}`
+          });
+        }
+
+        doc.status = status;
+        doc.remark = remark;
+      }
+    }
+
+    
+     // Allow updating remark ONLY if document already Verified or Rejected
+    if (
+      remark !== undefined &&
+      (doc.status === "Verified" || doc.status === "Rejected")
+    ) {
+      doc.remark = remark.trim();
+    }
+
     await property.save();
-    res.status(200).json({ success: true, data: property.documents });
+    res.status(200).json({ success: true, data: property.documents, message: "Document updated successfully" });
   } catch (error) {
     console.error("Error in updatePropertyDocument:", error);
     return handleError(res, error, "Error updating document");
