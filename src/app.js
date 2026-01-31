@@ -30,6 +30,7 @@ import promotionsRoutes from "./routes/promotions.routes.js";
 import profileRoutes from "./routes/profile.routes.js";
 import adminRoutes from "./admin/routes/index.routes.js";
 import amenitiesRoutes from "./admin/routes/amenities.routes.js";
+import foodRoutes from "./routes/food.routes.js";
 
 
 
@@ -75,7 +76,11 @@ app.use("/api/analytics", analyticsRoutes);
 app.use("/api/marketing", promotionsRoutes);
 app.use("/api/profile", profileRoutes);
 app.use("/api/admin", adminRoutes);
-// app.use("/api/amenities", amenitiesRoutes);
+app.use("/api/amenities", amenitiesRoutes);
+
+
+// Create the new Food Routes
+app.use("/api/food", foodRoutes);
 
 // Global Error Handler
 app.use(errorMiddleware);

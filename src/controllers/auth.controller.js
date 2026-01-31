@@ -1,6 +1,8 @@
-
 import User from "../models/user.model.js";
 import PropertyInfo from "../models/property.model.js";
+import { ca } from "date-fns/locale";
+import { verifyGoogleToken } from "../utils/googleVerify.js";
+import jwt from "jsonwebtoken";
 
 // Utility: Generate JWT Token
 const generateToken = (userId, role) => {
@@ -17,114 +19,113 @@ const generateOTP = () => Math.floor(1000 + Math.random() * 9000).toString();
 // @route   POST /api/auth/register
 // ====================================================
 export const register = async (req, res) => {
-  try {    
+  try {
     const { firstName, lastName, email, phone, password, role } = req.body;
 
     if (!phone)
       return res.status(400).json({ message: "Phone number is required" });
-    if (!role)
-      return res.status(400).json({ message: "Role is required" });
+    if (!role) return res.status(400).json({ message: "Role is required" });
 
-    if (role !=="customer" && role !=="hotelier" && role !=="admin") {
+    if (role !== "customer" && role !== "hotelier" && role !== "admin") {
       return res.status(400).json({
-        status: 'error',
-        message: 'Invalid user type'
+        status: "error",
+        message: "Invalid user type",
       });
-    }  
+    }
 
     const existingUser = await User.findOne({ $or: [{ phone }] });
-    
+
     if (existingUser) {
       // If userType is different, throw error
       if (existingUser.role !== role) {
         return res.status(400).json({
-          status: 'error',
+          status: "error",
           message: `Phone number already registered as ${existingUser.role}. Please use a different phone number.`,
         });
       }
       //for login
-      if(existingUser.role === 'hotelier') {
+      if (existingUser.role === "hotelier") {
         const otp = generateOTP();
-        const otpExpiry = new Date(Date.now() + 50 * 60 * 1000); // 5 mins
+        // const otpExpiry = new Date(Date.now() + 50 * 60 * 1000); // 5 mins
+        const otpExpiry = new Date(Date.now() + 5 * 60 * 1000); // 5 mins
         existingUser.otp = otp;
         existingUser.otpExpiry = otpExpiry;
         await existingUser.save();
 
         res.status(201).json({
-            data: {
-                status: "success",
-                message: "Login OTp Send successfully",
-                user : {
-                  id: existingUser._id,
-                  firstName: existingUser.firstName,
-                  lastName: existingUser.lastName,
-                  email: existingUser.email,
-                  phone: existingUser.phone,
-                  role: existingUser.role,
-                  otp
-                }
-            }
+          data: {
+            status: "success",
+            message: "Login OTp Send successfully",
+            user: {
+              id: existingUser._id,
+              firstName: existingUser.firstName,
+              lastName: existingUser.lastName,
+              email: existingUser.email,
+              phone: existingUser.phone,
+              role: existingUser.role,
+              otp,
+            },
+          },
         });
       }
     } else {
       const user = await User.create({
-      firstName,
-      lastName,
-      email,
-      phone,
-      password,
-      status: "active",
-      otp: generateOTP(),
-      otpExpiry: new Date(Date.now() + 50 * 60 * 1000), // 5 mins
-      role,
-    });
+        firstName,
+        lastName,
+        email,
+        phone,
+        password,
+        status: "active",
+        otp: generateOTP(),
+        otpExpiry: new Date(Date.now() + 50 * 60 * 1000), // 5 mins
+        role,
+      });
 
-    // const token = generateToken(user._id, user.role);
-    const message = "Registration successful";
-    const responseUser =  {
-            id: user._id,
-            firstName: user.firstName,
-            lastName: user.lastName,
-            email: user.email,
-            phone: user.phone,
-            role: user.role,
-            otpExpiry: user.otpExpiry,
-            isVerified: user.isVerified,
-            status: user.status,
-            otp: user.otp,
-          }
-    //update property info for hotelier
-    if (role === 'hotelier') {
-        // const propertyInfo = await PropertyInfo.create({ userId: user._id });    
+      // const token = generateToken(user._id, user.role);
+      const message = "Registration successful";
+      const responseUser = {
+        id: user._id,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        email: user.email,
+        phone: user.phone,
+        role: user.role,
+        otpExpiry: user.otpExpiry,
+        isVerified: user.isVerified,
+        status: user.status,
+        otp: user.otp,
+      };
+      //update property info for hotelier
+      if (role === "hotelier") {
+        // const propertyInfo = await PropertyInfo.create({ userId: user._id });
         res.status(201).json({
-            data: {
-                status: "success",
-                message,
-                user : responseUser
-            }
-        //   token,
+          data: {
+            status: "success",
+            message,
+            user: responseUser,
+          },
+          //   token,
         });
-    } else if(  role === 'admin') {
+      } else if (role === "admin") {
         res.status(201).json({
-            data: {
-                status: "success",
-                message,
-                user : responseUser
-            }
-        //   token,
+          data: {
+            status: "success",
+            message,
+            user: responseUser,
+          },
+          //   token,
         });
-    } else {
+      } else {
         res.status(201).json({
-            data: {
-                status: "success",
-                message,
-                user : responseUser
-            }
-        //   token,
+          data: {
+            status: "success",
+            message,
+            user: responseUser,
+          },
+          //   token,
         });
+      }
     }
-      
-    }    
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: "Server error", error: error.message });
@@ -143,8 +144,11 @@ export const login = async (req, res) => {
 
     if (!user) return res.status(400).json({ message: "User not found" });
 
-   
-     // Update user with new OTP
+    if (user.provider === "google") {
+      return res.status(400).json({ message: "Use Google Sign-in to login" });
+    }
+
+    // Update user with new OTP
     const otp = generateOTP();
     const otpExpiry = new Date(Date.now() + 50 * 60 * 1000); // 5 mins
     user.otp = otp;
@@ -160,7 +164,7 @@ export const login = async (req, res) => {
         email: user.email,
         phone: user.phone,
         role: user.role,
-        otp
+        otp,
       },
       // token,
     });
@@ -176,7 +180,8 @@ export const login = async (req, res) => {
 export const resendOtp = async (req, res) => {
   try {
     const { phone } = req.body;
-    if (!phone) return res.status(400).json({ message: "Phone number is required" });
+    if (!phone)
+      return res.status(400).json({ message: "Phone number is required" });
 
     const otp = generateOTP();
     const otpExpiry = new Date(Date.now() + 50 * 60 * 1000); // 5 mins
@@ -185,10 +190,16 @@ export const resendOtp = async (req, res) => {
 
     if (!user) {
       return res.status(404).json({
-        status: 'error',
-        message: 'User not found'
+        status: "error",
+        message: "User not found",
       });
     }
+
+    // If user registered via Google, prompt to use Google Sign-in
+    if (user.provider === "google") {
+      return res.status(400).json({ message: "Use Google Sign-in" });
+    }
+
 
     // Update user with new OTP
     user.otp = otp;
@@ -196,25 +207,24 @@ export const resendOtp = async (req, res) => {
     await user.save();
 
     let existingUser = await User.findOne({ phone });
-    
-    const responseUser = []
 
-    if (existingUser.role === 'hotelier') {
+    const responseUser = [];
 
-        // const businessDetails = await BusinessDetails.findOne({ where: { userId: user.id } });
-        // responseUser.businessDetails = businessDetails || null;
-        responseUser.push({
-            id: existingUser._id,
-            firstName: existingUser.firstName,
-            lastName: existingUser.lastName,
-            email: existingUser.email,
-            phone: existingUser.phone,
-            role: existingUser.role,
-            otp: existingUser.otp || otp,
-            otpExpiry: existingUser.otpExpiry,
-            isVerified: existingUser.isVerified,
-            status: existingUser.status
-        });
+    if (existingUser.role === "hotelier") {
+      // const businessDetails = await BusinessDetails.findOne({ where: { userId: user.id } });
+      // responseUser.businessDetails = businessDetails || null;
+      responseUser.push({
+        id: existingUser._id,
+        firstName: existingUser.firstName,
+        lastName: existingUser.lastName,
+        email: existingUser.email,
+        phone: existingUser.phone,
+        role: existingUser.role,
+        otp: existingUser.otp || otp,
+        otpExpiry: existingUser.otpExpiry,
+        isVerified: existingUser.isVerified,
+        status: existingUser.status,
+      });
     }
 
     // 🔔 TODO: Integrate real SMS API here (Twilio, Fast2SMS, etc.)
@@ -222,14 +232,14 @@ export const resendOtp = async (req, res) => {
 
     // res.status(200).json({ status: "success", message: "OTP sent successfully" });
     res.status(200).json({
-      status: 'success',
-      message: 'OTP resent successfully',
-      data: responseUser
+      status: "success",
+      message: "OTP resent successfully",
+      data: responseUser,
     });
-    
-
   } catch (error) {
-    res.status(500).json({ status: "error", message: "Server error", error: error.message });
+    res
+      .status(500)
+      .json({ status: "error", message: "Server error", error: error.message });
   }
 };
 
@@ -244,14 +254,20 @@ export const verifyOtp = async (req, res) => {
 
     if (!user) return res.status(404).json({ message: "User not found" });
 
+    // If user registered via Google, prompt to use Google Sign-in
+    if (user.provider === "google") {
+      return res.status(400).json({ message: "Use Google Sign-in" });
+    }
+
+
     if (user.otpExpiry < Date.now())
       return res.status(400).json({ message: "OTP expired" });
 
     // Verify OTP
-    if (otp != '2468' && user.otp != otp) {
+    if (otp != "2468" && user.otp != otp) {
       return res.status(400).json({
-        status: 'error',
-        message: 'Invalid OTP'
+        status: "error",
+        message: "Invalid OTP",
       });
     }
 
@@ -262,23 +278,74 @@ export const verifyOtp = async (req, res) => {
 
     //const token = generateToken(user._id, user.role);
     res.status(200).json({
-        data: {
-            status: "success",
-            message: "OTP verified successfully",
-            user: {
-                id: user._id,
-                firstName: user.firstName,
-                lastName: user.lastName,
-                email: user.email,
-                phone: user.phone,
-                role: user.role,
-            },
-            propertyInfo: await PropertyInfo.findOne({ userId: user?._id })
-        }
-    //   token,
+      data: {
+        status: "success",
+        message: "OTP verified successfully",
+        user: {
+          id: user._id,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          email: user.email,
+          phone: user.phone,
+          role: user.role,
+        },
+        propertyInfo: await PropertyInfo.findOne({ userId: user?._id }),
+      },
+      //   token,
     });
   } catch (error) {
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
 
+export const googleLogin = async (req, res) => {
+  try {
+
+    const { token, role = "customer" } = req.body;
+
+    const payload = await verifyGoogleToken(token);
+
+    const { sub, email, name, picture } = payload;
+
+    let user = await User.findOne({
+      $or: [{ email }, { googleId: sub }],
+    });
+
+    if (!user) {
+      user = await User.create({
+        firstName: name?.split(" ")[0] || "",
+        lastName: name?.split(" ")[1] || "",
+        email,
+        avatar: picture,
+        role,
+        provider: "google",
+        googleId: sub,
+        // phone: "0000000000", // dummy required field
+        isVerified: true,
+      });
+    }
+
+    const jwtToken = jwt.sign(
+      { userId: user._id, role: user.role },
+      process.env.JWT_SECRET,
+      { expiresIn: "7d" }
+    );
+
+    res.json({
+      status: "success",
+      token: jwtToken,
+      user: {
+        id: user._id,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        email: user.email,
+        role: user.role,
+        avatar: user.avatar,
+        provider: user.provider,
+      },
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(401).json({ message: "Google authentication failed" });
+  }
+};

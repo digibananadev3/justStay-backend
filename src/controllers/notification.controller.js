@@ -1,5 +1,6 @@
 import mongoose from "mongoose";
 import Notification from "../models/notification.model.js";
+import sendSMS from "../services/sms.service.js";
 
 // Create notification (internal use)
 export const createNotification = async ({ userId, title, message, type = "system", category, link, meta }) => {
@@ -13,6 +14,48 @@ export const createNotificationApi = async (req, res) => {
     if (!userId || !title) return res.status(400).json({ success: false, message: "userId and title are required" });
     const n = await Notification.create({ userId, title, message, type, category, link, meta });
     res.status(201).json({ success: true, message: "Notification created", data: n });
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Server error", error: error.message });
+  }
+};
+
+
+export const testNotificationMessageApi = async (req, res) => {
+  try {
+    console.log("Received request body:", req.body);
+    const { mobile, message } = req.body;
+
+    console.log("This is the value of the body", mobile, message);
+
+    if (!mobile || !message) {
+      return res.status(400).json({
+        success: false,
+        message: "Mobile and message required"
+      });
+    }
+
+    const result = await sendSMS(mobile, message);
+
+    console.log("SMS API Response:", result);
+
+    res.json({
+      success: true,
+      response: result
+    });
+  } catch (error) {
+    console.error("SMS sending error:", error);
+    res.status(500).json({
+      success: false,
+      message: "SMS sending failed"
+    });
+  }
+}
+
+
+export const testNotificationApi = async (req, res) => {
+  try {
+    // This is a test endpoint to verify the notification API is working
+    res.status(200).json({ success: true, message: "Notification API is working fine very well" });
   } catch (error) {
     res.status(500).json({ success: false, message: "Server error", error: error.message });
   }

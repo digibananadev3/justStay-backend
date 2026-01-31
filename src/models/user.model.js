@@ -23,9 +23,15 @@ const userSchema = new mongoose.Schema(
       type: String,
       trim: true,
     },
+    // phone: {
+    //   type: String,
+    //   required: [true, "Phone number is required"],
+    //   unique: true,
+    //   match: [/^[0-9]{10,15}$/, "Please enter a valid phone number"],
+    // },
     phone: {
       type: String,
-      required: [true, "Phone number is required"],
+      sparse: true,
       unique: true,
       match: [/^[0-9]{10,15}$/, "Please enter a valid phone number"],
     },
@@ -38,6 +44,15 @@ const userSchema = new mongoose.Schema(
       type: String,
       enum: ["customer", "hotelier", "admin"],
       default: "customer",
+    },
+    provider: {
+      type: String,
+      enum: ["local", "google"],
+      default: "local",
+    },
+    googleId: {
+      type: String,
+      index: true,
     },
     otp: {
       type: String,
@@ -56,24 +71,28 @@ const userSchema = new mongoose.Schema(
     // ---- Verification (KYC) ----
     kycStatus: {
       type: String,
-      enum: ['Pending', 'Verified', 'Rejected'],
-      default: 'Pending'
+      enum: ["Pending", "Verified", "Rejected"],
+      default: "Pending",
     },
     kycDocuments: [
       {
         name: { type: String, trim: true },
         documentType: { type: String, trim: true },
         documentUrl: { type: String, trim: true },
-        status: { type: String, enum: ['Pending', 'Verified', 'Rejected'], default: 'Pending' },
+        status: {
+          type: String,
+          enum: ["Pending", "Verified", "Rejected"],
+          default: "Pending",
+        },
         uploadedAt: { type: Date, default: Date.now },
-        expiresAt: { type: Date }
-      }
+        expiresAt: { type: Date },
+      },
     ],
-    kycNotes: { type: String, trim: true, default: '' },
+    kycNotes: { type: String, trim: true, default: "" },
     bypassAutoCheck: { type: Boolean, default: false },
     flags: { type: Number, default: 0 },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 //Hash password before saving (only if password exists)
