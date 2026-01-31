@@ -57,7 +57,18 @@ const roomInventorySchema = new Schema(
       // Minimum/Maximum Length of Stay (days)
       minLOS: { type: Number, default: 1, min: 0 },
       maxLOS: { type: Number, default: 450, min: 0 }
-    }
+    },
+
+
+    // Time Block Inventory Management
+    timeBlocks: [
+  {
+    from: { type: String, required: true }, // "14:00"
+    to: { type: String, required: true },   // "17:00"
+    plan: { type: String, enum: ["3hr", "6hr", "night"], required: true },
+    bookingId: { type: Schema.Types.ObjectId, ref: "Booking" },
+  }
+],
   },
   { timestamps: true }
 );

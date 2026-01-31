@@ -5,6 +5,22 @@ import PropertyRoom from "../models/propertyRoom.model.js";
 const parseISODate = (s) => new Date(`${s}T00:00:00.000Z`);
 const formatISODate = (d) => d.toISOString().slice(0, 10);
 
+
+const timeToMinutes = (t) => {
+  const [h, m] = t.split(":").map(Number);
+  return h * 60 + m;
+};
+
+const isOverlap = (aStart, aEnd, bStart, bEnd) => {
+  return Math.max(aStart, bStart) < Math.min(aEnd, bEnd);
+};
+
+const minutesToTime = (m) => {
+  String(Math.floor(m / 60)).padStart(2, "0") + ":" + String(m % 60).padStart(2, "0");
+};
+
+
+
 // normalize inventory day response with all keys present
 const normalizeDay = (doc) => {
   const d = doc || {};
@@ -433,5 +449,179 @@ export const saveBulkChanges = async (req, res) => {
     res
       .status(500)
       .json({ success: false, message: "Server error", error: error.message });
+  }
+};
+
+
+
+// New utility functions for time slot management
+export const checkRoomSlot = async (req, res) => {
+  try {
+    const { roomId, date, checkInTime, plan } = req.body;
+
+    let duration;
+    if (plan === "3hr") duration = 180;
+    else if (plan === "6hr") duration = 360;
+    else if (plan === "night") {
+      return checkNightAvailability(req, res);
+    }
+
+    const startMin = timeToMinutes(checkInTime);
+    const endMin = startMin + duration;
+
+    const doc = await RoomInventory.findOne({
+      roomId,
+      date: parseISODate(date),
+    });
+
+    if (!doc) {
+      return res.json({ success: true, available: true });
+    }
+
+    for (const b of doc.timeBlocks) {
+      const bStart = timeToMinutes(b.from);
+      const bEnd = timeToMinutes(b.to);
+      if (isOverlap(startMin, endMin, bStart, bEnd)) {
+        return res.json({
+          success: true,
+          available: false,
+          conflict: b,
+        });
+      }
+    }
+
+    return res.json({ success: true, available: true });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+};
+
+
+
+const checkNightAvailability = async (req, res) => {
+  const { roomId, date } = req.body;
+
+  const startDay = parseISODate(date);
+  const nextDay = new Date(startDay);
+  nextDay.setUTCDate(nextDay.getUTCDate() + 1);
+
+  const day1 = await RoomInventory.findOne({ roomId, date: startDay });
+  const day2 = await RoomInventory.findOne({ roomId, date: nextDay });
+
+  const hasBlock = (doc) =>
+    doc?.timeBlocks?.some(b => b.plan === "night");
+
+  if (hasBlock(day1) || hasBlock(day2)) {
+    return res.json({ success: true, available: false });
+  }
+
+  return res.json({ success: true, available: true });
+};
+
+
+
+export const blockRoomSlot = async (roomId, date, from, to, plan, bookingId) => {
+  await RoomInventory.updateOne(
+    { roomId, date: parseISODate(date) },
+    {
+      $push: {
+        timeBlocks: { from, to, plan, bookingId },
+      },
+    },
+    { upsert: true }
+  );
+};
+
+
+
+export const getAvailableSlots = async (req, res) => {
+  try {
+    const { roomId, date } = req.query;
+
+    const day = await RoomInventory.findOne({
+      roomId,
+      date: parseISODate(date),
+    }).lean();
+
+    const workStart = 10 * 60; // 10:00
+    const workEnd = 22 * 60;   // 22:00
+
+    const booked = (day?.timeBlocks || [])
+      .map(b => ({
+        start: timeToMinutes(b.from),
+        end: timeToMinutes(b.to)
+      }))
+      .sort((a, b) => a.start - b.start);
+
+    const free = [];
+    let cursor = workStart;
+
+    for (const b of booked) {
+      if (b.start > cursor) {
+        free.push({
+          from: minutesToTime(cursor),
+          to: minutesToTime(b.start)
+        });
+      }
+      cursor = Math.max(cursor, b.end);
+    }
+
+    if (cursor < workEnd) {
+      free.push({
+        from: minutesToTime(cursor),
+        to: minutesToTime(workEnd)
+      });
+    }
+
+    res.json({ success: true, freeSlots: free });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+};
+
+
+
+export const getBlockedSlotsOfDay = async (req, res) => {
+  try {
+    const { propertyId, roomId, date } = req.query;
+
+    if (!date) {
+      return res.status(400).json({ success: false, message: "date is required" });
+    }
+
+    const filter = { date: parseISODate(date) };
+
+    if (roomId) {
+      filter.roomId = roomId;
+    } 
+    else if (propertyId) {
+      const rooms = await PropertyRoom.find({ propertyId })
+        .select("_id")
+        .lean();
+
+      const roomIds = rooms.map(r => r._id);
+      filter.roomId = { $in: roomIds };
+    } 
+    else {
+      return res.status(400).json({
+        success: false,
+        message: "roomId or propertyId is required",
+      });
+    }
+
+    const days = await RoomInventory.find(filter)
+      .select("roomId timeBlocks")
+      .lean();
+
+    const result = days.map(d => ({
+      roomId: String(d.roomId),
+      timeBlocks: d.timeBlocks || []
+    }));
+
+    res.json({ success: true, data: result });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, error: err.message });
   }
 };
