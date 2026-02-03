@@ -144,7 +144,7 @@ export const getSpecificRestaurant = async (req, res) => {
 ========================= */
 export const createFood = async (req, res) => {
   try {
-    const { title, category, totalStock } = req.body;
+    const { title, category, totalStock, images } = req.body;
 
     if (!title || !category || totalStock === undefined) {
       return res.status(400).json({
@@ -153,10 +153,18 @@ export const createFood = async (req, res) => {
       });
     }
 
+     if (!images || !Array.isArray(images) || images.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "At least one food image is required"
+      });
+    }
+
     const food = await Food.create({
       title,
       category,
-      totalStock
+      totalStock,
+      images 
     });
 
     return res.status(201).json({
@@ -234,12 +242,13 @@ export const deleteFood = async (req, res) => {
 
 
 export const assignFood = async (req, res) => {
-  console.log("This is the value of the req.body:", req.body);
   const { propertyId, restaurantId, foodId, availableStock, price } = req.body;
 
-  const food = await Food.findById(foodId);
-  if (!food) return res.status(404).json({ message: "Food not found" });
-  if(!restaurantId){
+  if (availableStock <= 0) {
+    return res.status(400).json({ message: "availableStock must be greater than 0" });
+  }
+
+    if(!restaurantId){
     return res.status(400).json({ message: "restaurantId is required" });
   }
   if(!propertyId){
@@ -249,21 +258,35 @@ export const assignFood = async (req, res) => {
     return res.status(400).json({ message: "price is required" });
   }
 
-  if (!food || food.totalStock < availableStock)
+
+  const food = await Food.findOneAndUpdate(
+    { _id: foodId, totalStock: { $gte: availableStock } },
+    { $inc: { totalStock: -availableStock } },
+    { new: true }
+  );
+
+  if (!food) {
     return res.status(400).json({ message: "Not enough global stock" });
+  }
 
-  food.totalStock -= availableStock;
-  await food.save();
 
-  const stock = await PropertyFood.create({
-    propertyId,
-    restaurantId,
-    foodId,
-    availableStock,
-    price
-  });
+  try {
+    const stock = await PropertyFood.create({
+      propertyId,
+      restaurantId,
+      foodId,
+      availableStock,
+      price
+    });
 
-  res.status(201).json(stock);
+  return res.status(201).json(stock);
+} catch (err) {
+  if (err.code === 11000) {
+    return res.status(400).json({ message: "Food already assigned to this restaurant" });
+  }
+  throw err;
+}
+
 };
 
 
@@ -282,7 +305,7 @@ export const getSpecificPropertyFood = async (req, res) => {
       })
       .populate({
         path: "foodId",
-        select: "title category"
+        select: "title category images"
       });
     if (!propertyFood) {
       return res.status(404).json({

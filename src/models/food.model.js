@@ -50,6 +50,12 @@ const FoodSchema = new mongoose.Schema(
       type: String,
       required: true
     },
+    images: [
+      {
+        type: String, // image URL or file path
+        required: true
+      }
+    ],
     totalStock: {
       type: Number,
       required: true,

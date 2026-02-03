@@ -188,3 +188,147 @@ export const closeChatSession = async (req, res) => {
 
 
 
+// For the Support Admin to see all chat sessions
+// export const adminListAllChats = async (req, res) => {
+//   try {
+//     const { status = "Open", page = 1, limit = 20 } = req.query;
+
+//     // const filter = {};
+//     // if (status) filter.status = status;
+
+//     // const skip = (page - 1) * limit;
+
+//     // const [items, total] = await Promise.all([
+//     //   SupportChatSession.find(filter)
+//     //     .populate("createdBy", "firstName lastName")
+//     //     // .populate("assignedAdmin", "firstName lastName")
+//     //     .sort({ updatedAt: -1 })
+//     //     .skip(skip)
+//     //     .limit(Number(limit)),
+//     //   SupportChatSession.countDocuments(filter)
+//     // ]);
+
+//     const data = await SupportChatMessage?.find({})?.populate("sender", "firstName lastName role");
+//     //   const data = await SupportChatMessage.aggregate([
+//     //   // Join session
+//     //   {
+//     //     $lookup: {
+//     //       from: "supportchatsessions",
+//     //       localField: "sessionId",
+//     //       foreignField: "_id",
+//     //       as: "sessionId"
+//     //     }
+//     //   },
+//     //   { $unwind: "$sessionId" },
+
+//     //   // Only Open sessions (optional)
+//     //   { $match: { "sessionId.status": status } },
+
+//     //   // Join sender
+//     //   {
+//     //     $lookup: {
+//     //       from: "users",
+//     //       localField: "sender",
+//     //       foreignField: "_id",
+//     //       as: "sender"
+//     //     }
+//     //   },
+//     //   { $unwind: "$sender" },
+
+//     //   // ❌ REMOVE ADMIN MESSAGES
+//     //   {
+//     //     $match: { "sender.role": { $ne: "admin" } }
+//     //   },
+//     // ]);
+
+
+
+//     res.json({ success: true, data: data });
+//   } catch (e) {
+//     res.status(500).json({ success: false, message: e.message });
+//   }
+// };
+
+
+export const adminListAllChats = async (req, res) => {
+  try {
+    const { status = "Open" } = req.query;
+
+    const sessions = await SupportChatSession.aggregate([
+      { $match: { status } },
+
+      // Join messages
+      {
+        $lookup: {
+          from: "supportchatmessages",
+          localField: "_id",
+          foreignField: "sessionId",
+          as: "messages"
+        }
+      },
+      {
+
+        // Last message only
+        $addFields: {
+          lastMessage: {
+            $cond: [
+              { $gt: [{ $size: "$messages" }, 0] },
+              { $arrayElemAt: ["$messages", -1] },
+              null
+            ]
+          }
+        },
+      },
+
+
+      // Join user
+      {
+        $lookup: {
+          from: "users",
+          localField: "createdBy",
+          foreignField: "_id",
+          as: "createdBy"
+        }
+      },
+      {
+        $unwind: {
+          path: "$createdBy",
+          preserveNullAndEmptyArrays: true
+        }
+      },
+
+      // Sort by last activity
+      {
+        $addFields: {
+          sortDate: { $ifNull: ["$lastMessage.createdAt", "$createdAt"] }
+        }
+      },
+      { $sort: { sortDate: -1 } },
+
+      // Shape for frontend
+      {
+        $project: {
+          _id: 1,
+          topic: 1,
+          status: 1,
+          createdAt: 1,
+          // "createdBy.firstName": 1,
+          // "createdBy.lastName": 1,
+          createdBy: {
+            firstName: { $ifNull: ["$createdBy.firstName", "Guest"] },
+            lastName: { $ifNull: ["$createdBy.lastName", "User"] },
+            role: { $ifNull: ["$createdBy.role", "customer"] }
+          },
+          lastMessage: {
+            message: 1,
+            createdAt: 1
+          }
+        }
+      }
+    ]);
+
+    res.json({ success: true, data: sessions });
+  } catch (e) {
+    res.status(500).json({ success: false, message: e.message });
+  }
+};
