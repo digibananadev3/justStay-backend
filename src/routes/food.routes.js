@@ -1,23 +1,59 @@
 import express from "express";
-import { assignFood, createFood, createRestaurant, deleteFood, deleteRestaurant, getAllFoods, getAllRestaurants, getRestaurantStock, getSpecificPropertyFood, getSpecificRestaurant } from "../controllers/food.controller.js";
+import {
+  // Restaurant
+  createRestaurant,
+  getAllRestaurants,
+  getSpecificRestaurant,
+  deleteRestaurant,
+
+  // Food
+  createFood,
+  getAllFoods,
+  deleteFood,
+
+  // Property Food
+  assignFood,
+  getSpecificPropertyFood,
+  getRestaurantStock,
+  updateStock,
+  removeFood,
+
+  // Room Food
+  createRoomFoodOrder,
+  getFoodById
+} from "../controllers/food.controller.js";
+
 const router = express.Router();
 
+/* =========================
+   RESTAURANT ROUTES
+========================= */
+router.post("/restaurants", createRestaurant);
+router.get("/restaurants", getAllRestaurants);
+router.get("/restaurants/:id", getSpecificRestaurant);
+router.delete("/restaurants/:id", deleteRestaurant);
+
+/* =========================
+   GLOBAL FOOD ROUTES
+========================= */
+router.post("/foods", createFood);
+router.get("/foods", getAllFoods);
+router.get("/foods/:id", getFoodById);
+router.delete("/foods/:id", deleteFood);
 
 
-router.post("/create-restaurant", createRestaurant);
-router.get("/get-all-restaurants", getAllRestaurants);
-router.get("/get/:id", getSpecificRestaurant);
-router.delete("/delete-restaurant/:id", deleteRestaurant);
-
-
-
-router.post("/create-food", createFood);
-router.get("/get-all-foods", getAllFoods);
-router.delete("/delete-food/:id", deleteFood);
-
-
+/* =========================
+   PROPERTY → RESTAURANT FOOD
+========================= */
 router.post("/property-food", assignFood);
-router.get("/restaurant-stock/:restaurantId", getRestaurantStock);
 router.get("/property-food/property/:id", getSpecificPropertyFood);
+router.get("/property-food/restaurant/:restaurantId", getRestaurantStock);
+router.put("/property-food/:id", updateStock);
+router.delete("/property-food/:id", removeFood);
+
+/* =========================
+   ROOM FOOD ORDER
+========================= */
+router.post("/room-food", createRoomFoodOrder);
 
 export default router;
