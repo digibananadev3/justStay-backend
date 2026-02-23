@@ -338,7 +338,7 @@ export const assignFood = async (req, res) => {
     await session.commitTransaction();
     session.endSession();
 
-    res.status(201).json(stock[0]);
+    res.status(201).json({success: true, data : stock[0]});
   } catch (err) {
     await session.abortTransaction();
     session.endSession();

@@ -47,10 +47,14 @@ const userSchema = new mongoose.Schema(
     },
     provider: {
       type: String,
-      enum: ["local", "google"],
+      enum: ["local", "google", "facebook"],
       default: "local",
     },
     googleId: {
+      type: String,
+      index: true,
+    },
+    facebookId: {
       type: String,
       index: true,
     },

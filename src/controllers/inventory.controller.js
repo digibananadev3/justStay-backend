@@ -5,7 +5,6 @@ import PropertyRoom from "../models/propertyRoom.model.js";
 const parseISODate = (s) => new Date(`${s}T00:00:00.000Z`);
 const formatISODate = (d) => d.toISOString().slice(0, 10);
 
-
 const timeToMinutes = (t) => {
   const [h, m] = t.split(":").map(Number);
   return h * 60 + m;
@@ -16,10 +15,26 @@ const isOverlap = (aStart, aEnd, bStart, bEnd) => {
 };
 
 const minutesToTime = (m) => {
-  String(Math.floor(m / 60)).padStart(2, "0") + ":" + String(m % 60).padStart(2, "0");
+  String(Math.floor(m / 60)).padStart(2, "0") +
+    ":" +
+    String(m % 60).padStart(2, "0");
 };
 
+function reminderTime(time) {
+  let [h, m] = time.split(":").map(Number);
 
+  let nextDay = false;
+
+  if (h >= 24) {
+    h = h - 24;
+    nextDay = true;
+  }
+
+  const hh = String(h).padStart(2, "0");
+  const mm = String(m).padStart(2, "0");
+
+  return { time: `${hh}:${mm}`, nextDay };
+}
 
 // normalize inventory day response with all keys present
 const normalizeDay = (doc) => {
@@ -185,12 +200,10 @@ export const getInventoryDay = async (req, res) => {
       date: parseISODate(date),
     });
     if (!doc)
-      return res
-        .status(200)
-        .json({
-          success: true,
-          data: normalizeDay({ roomId, date: parseISODate(date) }),
-        });
+      return res.status(200).json({
+        success: true,
+        data: normalizeDay({ roomId, date: parseISODate(date) }),
+      });
     return res.status(200).json({ success: true, data: normalizeDay(doc) });
   } catch (error) {
     console.error("Error getInventoryDay:", error);
@@ -224,13 +237,11 @@ export const patchInventoryDay = async (req, res) => {
       { $set: set },
       { new: true, upsert: true, runValidators: true },
     );
-    return res
-      .status(200)
-      .json({
-        success: true,
-        message: "Inventory day updated",
-        data: normalizeDay(updated),
-      });
+    return res.status(200).json({
+      success: true,
+      message: "Inventory day updated",
+      data: normalizeDay(updated),
+    });
   } catch (error) {
     console.error("Error patchInventoryDay:", error);
     return res
@@ -253,13 +264,11 @@ export const updateDayRatesAndRestrictions = async (req, res) => {
       { $set: set },
       { new: true, upsert: true, runValidators: true },
     );
-    return res
-      .status(200)
-      .json({
-        success: true,
-        message: "Rates & restrictions updated",
-        data: normalizeDay(updated),
-      });
+    return res.status(200).json({
+      success: true,
+      message: "Rates & restrictions updated",
+      data: normalizeDay(updated),
+    });
   } catch (error) {
     console.error("Error updateDayRatesAndRestrictions:", error);
     return res
@@ -276,13 +285,11 @@ export const deleteInventoryDay = async (req, res) => {
       roomId,
       date: parseISODate(date),
     });
-    return res
-      .status(200)
-      .json({
-        success: true,
-        message: out ? "Deleted" : "No record",
-        data: normalizeDay(out || { roomId, date: parseISODate(date) }),
-      });
+    return res.status(200).json({
+      success: true,
+      message: out ? "Deleted" : "No record",
+      data: normalizeDay(out || { roomId, date: parseISODate(date) }),
+    });
   } catch (error) {
     console.error("Error deleteInventoryDay:", error);
     return res
@@ -302,19 +309,17 @@ export const upsertInventoryDay = async (req, res) => {
       { new: true, upsert: true, runValidators: true },
     );
 
-    res
-      .status(200)
-      .json({
-        success: true,
-        message: "Inventory upserted",
-        data: {
-          roomId: doc.roomId,
-          date,
-          allotment: doc.allotment,
-          open: doc.open,
-          stopSell: doc.stopSell,
-        },
-      });
+    res.status(200).json({
+      success: true,
+      message: "Inventory upserted",
+      data: {
+        roomId: doc.roomId,
+        date,
+        allotment: doc.allotment,
+        open: doc.open,
+        stopSell: doc.stopSell,
+      },
+    });
   } catch (error) {
     console.error("Error upsertInventoryDay:", error);
     res
@@ -365,13 +370,11 @@ export const bulkInventory = async (req, res) => {
       }
     }
 
-    res
-      .status(200)
-      .json({
-        success: true,
-        message: "Inventory updated",
-        data: { affected },
-      });
+    res.status(200).json({
+      success: true,
+      message: "Inventory updated",
+      data: { affected },
+    });
   } catch (error) {
     console.error("Error bulkInventory:", error);
     res
@@ -400,16 +403,14 @@ export const toggleOpenClose = async (req, res) => {
       { $set: { open } },
     );
 
-    res
-      .status(200)
-      .json({
-        success: true,
-        message: "Open/close updated",
-        data: {
-          matched: resu.matchedCount ?? resu.n,
-          modified: resu.modifiedCount ?? resu.nModified,
-        },
-      });
+    res.status(200).json({
+      success: true,
+      message: "Open/close updated",
+      data: {
+        matched: resu.matchedCount ?? resu.n,
+        modified: resu.modifiedCount ?? resu.nModified,
+      },
+    });
   } catch (error) {
     console.error("Error toggleOpenClose:", error);
     res
@@ -437,13 +438,11 @@ export const saveBulkChanges = async (req, res) => {
 
     // rates saved in rates.controller via dedicated endpoints; included here only for inventory portion
 
-    res
-      .status(200)
-      .json({
-        success: true,
-        message: "Changes saved",
-        data: { inventoryUpserts: invCount, rateUpserts: 0 },
-      });
+    res.status(200).json({
+      success: true,
+      message: "Changes saved",
+      data: { inventoryUpserts: invCount, rateUpserts: 0 },
+    });
   } catch (error) {
     console.error("Error saveBulkChanges:", error);
     res
@@ -451,8 +450,6 @@ export const saveBulkChanges = async (req, res) => {
       .json({ success: false, message: "Server error", error: error.message });
   }
 };
-
-
 
 // New utility functions for time slot management
 export const checkRoomSlot = async (req, res) => {
@@ -496,8 +493,6 @@ export const checkRoomSlot = async (req, res) => {
   }
 };
 
-
-
 const checkNightAvailability = async (req, res) => {
   const { roomId, date } = req.body;
 
@@ -508,8 +503,7 @@ const checkNightAvailability = async (req, res) => {
   const day1 = await RoomInventory.findOne({ roomId, date: startDay });
   const day2 = await RoomInventory.findOne({ roomId, date: nextDay });
 
-  const hasBlock = (doc) =>
-    doc?.timeBlocks?.some(b => b.plan === "night");
+  const hasBlock = (doc) => doc?.timeBlocks?.some((b) => b.plan === "night");
 
   if (hasBlock(day1) || hasBlock(day2)) {
     return res.json({ success: true, available: false });
@@ -518,9 +512,14 @@ const checkNightAvailability = async (req, res) => {
   return res.json({ success: true, available: true });
 };
 
-
-
-export const blockRoomSlot = async (roomId, date, from, to, plan, bookingId) => {
+export const blockRoomSlot = async (
+  roomId,
+  date,
+  from,
+  to,
+  plan,
+  bookingId,
+) => {
   await RoomInventory.updateOne(
     { roomId, date: parseISODate(date) },
     {
@@ -528,11 +527,9 @@ export const blockRoomSlot = async (roomId, date, from, to, plan, bookingId) => 
         timeBlocks: { from, to, plan, bookingId },
       },
     },
-    { upsert: true }
+    { upsert: true },
   );
 };
-
-
 
 export const getAvailableSlots = async (req, res) => {
   try {
@@ -544,12 +541,12 @@ export const getAvailableSlots = async (req, res) => {
     }).lean();
 
     const workStart = 10 * 60; // 10:00
-    const workEnd = 22 * 60;   // 22:00
+    const workEnd = 22 * 60; // 22:00
 
     const booked = (day?.timeBlocks || [])
-      .map(b => ({
+      .map((b) => ({
         start: timeToMinutes(b.from),
-        end: timeToMinutes(b.to)
+        end: timeToMinutes(b.to),
       }))
       .sort((a, b) => a.start - b.start);
 
@@ -560,7 +557,7 @@ export const getAvailableSlots = async (req, res) => {
       if (b.start > cursor) {
         free.push({
           from: minutesToTime(cursor),
-          to: minutesToTime(b.start)
+          to: minutesToTime(b.start),
         });
       }
       cursor = Math.max(cursor, b.end);
@@ -569,7 +566,7 @@ export const getAvailableSlots = async (req, res) => {
     if (cursor < workEnd) {
       free.push({
         from: minutesToTime(cursor),
-        to: minutesToTime(workEnd)
+        to: minutesToTime(workEnd),
       });
     }
 
@@ -579,30 +576,28 @@ export const getAvailableSlots = async (req, res) => {
   }
 };
 
-
-
 export const getBlockedSlotsOfDay = async (req, res) => {
   try {
     const { propertyId, roomId, date } = req.query;
 
     if (!date) {
-      return res.status(400).json({ success: false, message: "date is required" });
+      return res
+        .status(400)
+        .json({ success: false, message: "date is required" });
     }
 
     const filter = { date: parseISODate(date) };
 
     if (roomId) {
       filter.roomId = roomId;
-    } 
-    else if (propertyId) {
+    } else if (propertyId) {
       const rooms = await PropertyRoom.find({ propertyId })
         .select("_id")
         .lean();
 
-      const roomIds = rooms.map(r => r._id);
+      const roomIds = rooms.map((r) => r._id);
       filter.roomId = { $in: roomIds };
-    } 
-    else {
+    } else {
       return res.status(400).json({
         success: false,
         message: "roomId or propertyId is required",
@@ -613,13 +608,27 @@ export const getBlockedSlotsOfDay = async (req, res) => {
       .select("roomId timeBlocks")
       .lean();
 
-    const result = days.map(d => ({
+    // const result = days.map(d => ({
+    //   roomId: String(d.roomId),
+    //   timeBlocks: d.timeBlocks || []
+    // }));
+
+    const result = days.map((d) => ({
       roomId: String(d.roomId),
-      timeBlocks: d.timeBlocks || []
+      timeBlocks: (d.timeBlocks || []).map((tb) => {
+        const from = reminderTime(tb.from);
+        const to = reminderTime(tb.to);
+
+        return {
+          ...tb,
+          from: from.time,
+          to: to.time,
+          crossesMidnight: to.nextDay || from.nextDay,
+        };
+      }),
     }));
 
     res.json({ success: true, data: result });
-
   } catch (err) {
     console.error(err);
     res.status(500).json({ success: false, error: err.message });

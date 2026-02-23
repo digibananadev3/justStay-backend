@@ -3,12 +3,14 @@ import PropertyInfo from "../models/property.model.js";
 import { ca } from "date-fns/locale";
 import { verifyGoogleToken } from "../utils/googleVerify.js";
 import jwt from "jsonwebtoken";
+// import bcrypt from "bcrypt";
+import axios from "axios";
 
 // Utility: Generate JWT Token
 const generateToken = (userId, role) => {
-  // return jwt.sign({ userId, role }, process.env.JWT_SECRET, {
-  //   expiresIn: "7d",
-  // });
+  return jwt.sign({ userId, role }, process.env.JWT_SECRET, {
+    expiresIn: "7d",
+  });
 };
 
 // Utility: Generate OTP (6 digits)
@@ -136,42 +138,155 @@ export const register = async (req, res) => {
 // @desc    Login (with email or phone + password)
 // @route   POST /api/auth/login
 // ====================================================
+// export const login = async (req, res) => {
+//   try {
+//     const { email, phone, password } = req.body;
+//     if (email && !phone) {
+
+//       // let userExist = await User.findOne({ email: email });
+//       if (!userExist._id) {
+//         return res.status(400).json({
+//           success: false,
+//           message: "Don't find the user with this email",
+//         });
+//       }
+
+//       let isPasswordCorrect = await bcrypt.compare(
+//         password,
+//         userExist.password,
+//       );
+//       if (isPasswordCorrect) {
+//         return res.status(400).json({
+//           success: false,
+//           message: "Invalid Credentials",
+//         });
+//       }
+
+//       return res.status(200).json({
+//         success: true,
+//         message: "User Login successfully",
+//         user: {
+//           id: user._id,
+//           firstName: user.firstName,
+//           lastName: user.lastName,
+//           email: user.email,
+//           phone: user.phone,
+//           role: user.role,
+//         },
+//       });
+//     }
+//     let user = await User.findOne({ phone });
+
+//     if (!user) return res.status(400).json({ message: "User not found" });
+
+//     if (user.provider === "google") {
+//       return res.status(400).json({ message: "Use Google Sign-in to login" });
+//     }
+
+//     // Update user with new OTP
+//     const otp = generateOTP();
+//     const otpExpiry = new Date(Date.now() + 50 * 60 * 1000); // 5 mins
+//     user.otp = otp;
+//     user.otpExpiry = otpExpiry;
+//     await user.save();
+
+//     res.status(200).json({
+//       message: "Login OTp Send successfully",
+//       user: {
+//         id: user._id,
+//         firstName: user.firstName,
+//         lastName: user.lastName,
+//         email: user.email,
+//         phone: user.phone,
+//         role: user.role,
+//         otp,
+//       },
+//       // token,
+//     });
+//   } catch (error) {
+//     res.status(500).json({ message: "Server error", error: error.message });
+//   }
+// };
+// ===============================
+// LOGIN (Email + Password OR Phone + OTP)
+// ===============================
 export const login = async (req, res) => {
   try {
     const { email, phone, password } = req.body;
 
-    let user = await User.findOne({ phone });
+    // ===============================
+    // EMAIL + PASSWORD LOGIN
+    // ===============================
+    if (email && password) {
+      const user = await User.findOne({ email }).select("+password")
 
-    if (!user) return res.status(400).json({ message: "User not found" });
+      if (!user)
+        return res.status(400).json({ message: "User not found" })
 
-    if (user.provider === "google") {
-      return res.status(400).json({ message: "Use Google Sign-in to login" });
+      if (user.provider === "google"){
+        return res.status(400).json({
+          message: "Use Google Sign-in",
+        });
+      }
+
+      const isMatch = await user.matchPassword(password);
+
+      if (!isMatch)
+        return res.status(400).json({
+          message: "Invalid credentials",
+        });
+
+      const token = generateToken(user._id, user.role);
+
+      return res.status(200).json({
+        success: true,
+        message: "Login successful",
+        token,
+        user: {
+          id: user._id,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          email: user.email,
+          phone: user.phone,
+          role: user.role,
+        },
+      });
     }
 
-    // Update user with new OTP
-    const otp = generateOTP();
-    const otpExpiry = new Date(Date.now() + 50 * 60 * 1000); // 5 mins
-    user.otp = otp;
-    user.otpExpiry = otpExpiry;
-    await user.save();
+    // ===============================
+    // PHONE LOGIN (OTP)
+    // ===============================
+    if (phone) {
+      const user = await User.findOne({ phone });
 
-    res.status(200).json({
-      message: "Login OTp Send successfully",
-      user: {
-        id: user._id,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        email: user.email,
-        phone: user.phone,
-        role: user.role,
-        otp,
-      },
-      // token,
+      if (!user)
+        return res.status(400).json({ message: "User not found" });
+
+      if (user.provider === "google")
+        return res.status(400).json({
+          message: "Use Google Sign-in",
+        });
+
+      const otp = generateOTP();
+      user.otp = otp;
+      user.otpExpiry = new Date(Date.now() + 5 * 60 * 1000);
+      await user.save();
+
+      return res.status(200).json({
+        message: "OTP sent successfully",
+        otp, // remove in production
+      });
+    }
+
+    return res.status(400).json({
+      message: "Provide email/password or phone",
     });
   } catch (error) {
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
+
+
 
 // ====================================================
 // @desc    Send OTP for phone login / verification
@@ -199,7 +314,6 @@ export const resendOtp = async (req, res) => {
     if (user.provider === "google") {
       return res.status(400).json({ message: "Use Google Sign-in" });
     }
-
 
     // Update user with new OTP
     user.otp = otp;
@@ -259,7 +373,6 @@ export const verifyOtp = async (req, res) => {
       return res.status(400).json({ message: "Use Google Sign-in" });
     }
 
-
     if (user.otpExpiry < Date.now())
       return res.status(400).json({ message: "OTP expired" });
 
@@ -300,7 +413,6 @@ export const verifyOtp = async (req, res) => {
 
 export const googleLogin = async (req, res) => {
   try {
-
     const { token, role = "customer" } = req.body;
 
     const payload = await verifyGoogleToken(token);
@@ -328,7 +440,7 @@ export const googleLogin = async (req, res) => {
     const jwtToken = jwt.sign(
       { userId: user._id, role: user.role },
       process.env.JWT_SECRET,
-      { expiresIn: "7d" }
+      { expiresIn: "7d" },
     );
 
     res.json({
@@ -347,5 +459,76 @@ export const googleLogin = async (req, res) => {
   } catch (error) {
     console.error(error);
     res.status(401).json({ message: "Google authentication failed" });
+  }
+};
+
+
+
+export const facebookLogin = async (req, res) => {
+  try {
+    const { accessToken, role = "customer" } = req.body;
+
+    if (!accessToken) {
+      return res.status(400).json({
+        message: "Facebook access token required",
+      });
+    }
+
+    // Verify token with Facebook Graph API
+    const fbResponse = await axios.get(
+      `https://graph.facebook.com/me`,
+      {
+        params: {
+          fields: "id,name,email,picture",
+          access_token: accessToken,
+        },
+      }
+    );
+
+    const { id, name, email, picture } = fbResponse.data;
+
+    let user = await User.findOne({
+      $or: [{ email }, { facebookId: id }],
+    });
+
+    if (!user) {
+      user = await User.create({
+        firstName: name?.split(" ")[0] || "",
+        lastName: name?.split(" ")[1] || "",
+        email,
+        avatar: picture?.data?.url,
+        role,
+        provider: "facebook",
+        facebookId: id,
+        isVerified: true,
+      });
+    }
+
+    const token = jwt.sign(
+      { userId: user._id, role: user.role },
+      process.env.JWT_SECRET,
+      { expiresIn: "7d" }
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "Facebook login successful",
+      token,
+      user: {
+        id: user._id,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        email: user.email,
+        avatar: user.avatar,
+        role: user.role,
+        provider: user.provider,
+      },
+    });
+  } catch (error) {
+    console.error(error.response?.data || error.message);
+
+    return res.status(401).json({
+      message: "Facebook authentication failed",
+    });
   }
 };
