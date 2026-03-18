@@ -67,6 +67,7 @@ const roomInventorySchema = new Schema(
     to: { type: String, required: true },   // "17:00"
     plan: { type: String, enum: ["3hr", "6hr", "night"], required: true },
     bookingId: { type: Schema.Types.ObjectId, ref: "Booking" },
+    roomNumber: String
   }
 ],
   },

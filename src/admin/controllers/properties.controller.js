@@ -77,7 +77,7 @@ export const getPropertyReviewsSummary = async (req, res) => {
     return res.status(200).json({
       success: true,
       data: {
-        cards: { totalReviews: total, averageRating: avgRating, responseRate },
+        cards: { guestTotalReviews: total, guestAverageRating: avgRating, responseRate },
         recentReviews: recent,
       },
     });
@@ -712,8 +712,24 @@ export const getAllProperties = async (req, res) => {
     // Build query
     if (search) {
       const orConditions = [
+        // Hotel / Property Name
         { "basicPropertyDetails.name": { $regex: search, $options: "i" } },
+
+        { "location.state": { $regex: search, $options: "i" }  },
+
+        // City
+        { "location.city": { $regex: search, $options: "i" }  },
+
+        // Area
+        { "location.area": { $regex: search, $options: "i" }  },
+
+        // Landmark
+         { "location.landmarks": { $regex: search, $options: "i" } },
+
+        // Email
         { "contactDetails.email": { $regex: search, $options: "i" } },
+
+        // Mobile
         { "contactDetails.mobile": { $regex: String(search), $options: "i" } },
       ];
 

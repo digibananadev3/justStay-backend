@@ -95,6 +95,46 @@ const userSchema = new mongoose.Schema(
     kycNotes: { type: String, trim: true, default: "" },
     bypassAutoCheck: { type: Boolean, default: false },
     flags: { type: Number, default: 0 },
+
+    // ------------------
+    // 4 Level MLM System
+    // ------------------
+
+    referralCode: {
+      type: String,
+      unique: true,
+      sparse: true,
+      index: true,
+    },
+
+    referredBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      index: true
+    },
+
+    // Stores up to 4 uplines
+    referralPath: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+        index: true
+      },
+    ],
+
+    wallet: {
+      balance: { type: Number, default: 0 },
+      totalEarned: { type: Number, default: 0 },
+      totalWithdrawn: { type: Number, default: 0 },
+    },
+
+    referralStats: {
+      level1Count: { type: Number, default: 0 },
+      level2Count: { type: Number, default: 0 },
+      level3Count: { type: Number, default: 0 },
+      level4Count: { type: Number, default: 0 },
+      totalEarnings: { type: Number, default: 0 },
+    },
   },
   { timestamps: true },
 );
@@ -106,6 +146,16 @@ userSchema.pre("save", async function (next) {
   this.password = await bcrypt.hash(this.password, salt);
   next();
 });
+
+
+// Auto generate referral code
+// userSchema.pre("save", function (next) {
+//   if (!this.referralCode) {
+//     const random = Math.random().toString(36).substring(2, 8).toUpperCase();
+//     this.referralCode = "JS" + random;
+//   }
+//   next();
+// });
 
 //Compare password for login
 userSchema.methods.matchPassword = async function (enteredPassword) {

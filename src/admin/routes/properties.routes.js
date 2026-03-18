@@ -34,6 +34,7 @@ import {
   addPropertyAmenities,
   removePropertyAmenities,
 } from '../controllers/properties.controller.js';
+import { updateBankDetails, updateGstBusinessLicense, updatePanAadhar } from '../../controllers/property.controller.js';
 
 const router = express.Router();
 
@@ -88,6 +89,12 @@ router.get(
   '/:id',
   getPropertyById
 );
+
+
+
+router.post("/pan-aadhar", updatePanAadhar);
+router.post("/bank-details", updateBankDetails);
+router.post("/gst-license", updateGstBusinessLicense);
 
 
 

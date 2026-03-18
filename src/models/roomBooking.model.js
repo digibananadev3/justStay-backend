@@ -8,7 +8,13 @@ const { Schema } = mongoose;
 const bookingTypes = ["Online", "Manual"];
 const bookingStatuses = ["Booked", "CheckIn", "CheckOut", "Cancel"];
 const paymentStatuses = ["pending", "paid", "failed", "refunded", "partial"];
-const bookingSources = ["JustStay App", "Website", "Booking.com", "Expedia", "OTA"];
+const bookingSources = [
+  "JustStay App",
+  "Website",
+  "Booking.com",
+  "Expedia",
+  "OTA",
+];
 
 // -----------------------------------------
 // SUB-SCHEMAS
@@ -66,20 +72,34 @@ const priceSummarySchema = new Schema({
   totalAmount: { type: Number, default: 0 },
 });
 
-const refundSchema = new Schema({
-  status: { type: String, enum: ["none", "requested", "approved", "processed", "rejected"], default: "none" },
-  amount: { type: Number, default: 0 },
-  reason: { type: String },
-  processedAt: { type: Date }
-}, { _id: false });
+const refundSchema = new Schema(
+  {
+    status: {
+      type: String,
+      enum: ["none", "requested", "approved", "processed", "rejected"],
+      default: "none",
+    },
+    amount: { type: Number, default: 0 },
+    reason: { type: String },
+    processedAt: { type: Date },
+  },
+  { _id: false },
+);
 
-const disputeSchema = new Schema({
-  status: { type: String, enum: ["none", "open", "resolved", "rejected"], default: "none" },
-  reason: { type: String },
-  notes: { type: String },
-  openedAt: { type: Date },
-  resolvedAt: { type: Date }
-}, { _id: false });
+const disputeSchema = new Schema(
+  {
+    status: {
+      type: String,
+      enum: ["none", "open", "resolved", "rejected"],
+      default: "none",
+    },
+    reason: { type: String },
+    notes: { type: String },
+    openedAt: { type: Date },
+    resolvedAt: { type: Date },
+  },
+  { _id: false },
+);
 
 // -----------------------------------------
 // MAIN SCHEMA
@@ -99,6 +119,15 @@ const roomBookingSchema = new Schema(
       ref: "PropertyInfo",
       required: true,
     },
+
+    //  Updated
+    roomId: {
+      type: Schema.Types.ObjectId,
+      ref: "PropertyRoom",
+      required: true,
+    },
+    plan: { type: String, enum: ["3hr", "6hr", "night"], required: true },
+
     type: {
       type: String,
       enum: bookingTypes,
@@ -110,11 +139,30 @@ const roomBookingSchema = new Schema(
     paymentStatus: { type: String, enum: paymentStatuses, default: "pending" },
     isHourly: { type: Boolean, default: false },
 
+    mealPlan: {
+      type: String,
+      enum: ["roomOnly", "withBreakfast"],
+      required: true,
+    },
+
     status: {
       type: String,
       enum: bookingStatuses,
       required: true,
       default: "Booked",
+    },
+
+
+    // ADD COUPON
+    coupon: {
+      code: { type: String },
+      discountAmount: { type: Number, default: 0 },
+    },
+
+    
+    rewardProcessed: {
+      type: Boolean,
+      default: false,
     },
 
     guestDetails: guestDetailsSchema,
@@ -139,14 +187,14 @@ const roomBookingSchema = new Schema(
 
     paymentInfo: {
       method: { type: String, trim: true },
-      transactionId: { type: String, trim: true }
+      transactionId: { type: String, trim: true },
     },
-    adminNotes: { type: String, trim: true, default: '' },
-    specialRequests: { type: String, trim: true, default: '' },
+    adminNotes: { type: String, trim: true, default: "" },
+    specialRequests: { type: String, trim: true, default: "" },
     voucherUrl: { type: String, trim: true },
     confirmationSentAt: { type: Date },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 // -----------------------------------------

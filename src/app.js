@@ -31,6 +31,8 @@ import profileRoutes from "./routes/profile.routes.js";
 import adminRoutes from "./admin/routes/index.routes.js";
 import amenitiesRoutes from "./admin/routes/amenities.routes.js";
 import foodRoutes from "./routes/food.routes.js";
+import referralRoutes from "./routes/referral.routes.js";
+import favoriteRoutes from "./routes/favorite.routes.js"
 
 
 
@@ -81,6 +83,12 @@ app.use("/api/amenities", amenitiesRoutes);
 
 // Create the new Food Routes
 app.use("/api/food", foodRoutes);
+
+// NEW Referral API
+app.use("/api/referral", referralRoutes);
+
+// Favourite API
+app.use("/api/favorite", favoriteRoutes);
 
 // Global Error Handler
 app.use(errorMiddleware);

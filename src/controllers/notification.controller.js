@@ -20,36 +20,70 @@ export const createNotificationApi = async (req, res) => {
 };
 
 
+// export const testNotificationMessageApi = async (req, res) => {
+//   try {
+//     console.log("Received request body:", req.body);
+//     const { mobile, message } = req.body;
+
+//     console.log("This is the value of the body", mobile, message);
+
+//     if (!mobile || !message) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "Mobile and message required"
+//       });
+//     }
+
+//     const result = await sendSMS(mobile, message);
+
+//     console.log("SMS API Response:", result);
+
+//     res.json({
+//       success: true,
+//       response: result
+//     });
+//   } catch (error) {
+//     console.error("SMS sending error:", error);
+//     res.status(500).json({
+//       success: false,
+//       message: "SMS sending failed"
+//     });
+//   }
+// }
 export const testNotificationMessageApi = async (req, res) => {
   try {
-    console.log("Received request body:", req.body);
-    const { mobile, message } = req.body;
+    const { mobile, name } = req.body;
 
-    console.log("This is the value of the body", mobile, message);
-
-    if (!mobile || !message) {
+    if (!mobile || !name) {
       return res.status(400).json({
         success: false,
-        message: "Mobile and message required"
+        message: "Mobile and name required"
       });
     }
 
-    const result = await sendSMS(mobile, message);
+    const template =
+      "Dear {#var#}, Welcome to Juststay, we will try to give you the hassle-free hotel booking experience. Refer our app to your friends and earn money on their bookings. Juststay";
 
-    console.log("SMS API Response:", result);
+    const message = template.replace("{#var#}", name.trim());
+
+    console.log("Generated Message:", JSON.stringify(message));
+    console.log("Length:", message.length);
+
+    const result = await sendSMS(mobile, message);
 
     res.json({
       success: true,
       response: result
     });
+
   } catch (error) {
-    console.error("SMS sending error:", error);
+    console.error(error);
     res.status(500).json({
       success: false,
       message: "SMS sending failed"
     });
   }
-}
+};
 
 
 export const testNotificationApi = async (req, res) => {

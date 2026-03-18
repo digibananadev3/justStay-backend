@@ -5,6 +5,8 @@ import {
   getRoomBookingById,
   getAllRoomBookings,
   deleteRoomBooking,
+  updateBookingStatusAndPayment,
+  getUserBookings,
 } from "../controllers/roomBooking.controller.js";
 
 
@@ -15,5 +17,7 @@ router.put("/:id",  updateRoomBooking);
 router.get("/:id",  getRoomBookingById);
 router.get("/",  getAllRoomBookings);
 router.delete("/:id",  deleteRoomBooking);
+router.put("/updateBookingStatus/:bookingId", updateBookingStatusAndPayment);
+router.get("/user/:userId/bookings", getUserBookings);
 
 export default router;

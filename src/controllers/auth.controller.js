@@ -1,10 +1,13 @@
 import User from "../models/user.model.js";
 import PropertyInfo from "../models/property.model.js";
-import { ca } from "date-fns/locale";
+// import { ca } from "date-fns/locale";
 import { verifyGoogleToken } from "../utils/googleVerify.js";
 import jwt from "jsonwebtoken";
 // import bcrypt from "bcrypt";
+import mongoose from "mongoose";
+import crypto from "crypto";
 import axios from "axios";
+import sendSMS from "../services/sms.service.js";
 
 // Utility: Generate JWT Token
 const generateToken = (userId, role) => {
@@ -16,16 +19,59 @@ const generateToken = (userId, role) => {
 // Utility: Generate OTP (6 digits)
 const generateOTP = () => Math.floor(1000 + Math.random() * 9000).toString();
 
+// Generate Unique Referral Code
+const generateReferralCode = async () => {
+  let code;
+  let exists = true;
+
+  while (exists) {
+    code = crypto.randomBytes(4).toString("hex").toUpperCase();
+    exists = await User.findOne({ referralCode: code });
+  }
+
+  return code;
+};
+
+/* ============================================================
+   REFERRAL ENGINE (SEPARATE FUNCTION)
+============================================================ */
+const processReferral = async (referralCode, session) => {
+  if (!referralCode) return { referralPath: [], upline: null };
+
+  const referrer = await User.findOne({ referralCode }).session(session);
+
+  if (!referrer) {
+    throw new Error("Invalid referral code");
+  }
+
+  // Build 4-level path
+  let referralPath = [referrer._id];
+
+  if (referrer.referralPath?.length > 0) {
+    referralPath = [...referralPath, ...referrer.referralPath.slice(0, 3)];
+  }
+
+  return {
+    referralPath,
+    upline: referrer._id,
+  };
+};
+
 // ====================================================
 // @desc    Register user (Customer / Hotelier / Admin)
 // @route   POST /api/auth/register
 // ====================================================
 export const register = async (req, res) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
   try {
-    const { firstName, lastName, email, phone, password, role } = req.body;
+    const { firstName, lastName, email, phone, password, role, referralCode } =
+      req.body;
 
     if (!phone)
       return res.status(400).json({ message: "Phone number is required" });
+
     if (!role) return res.status(400).json({ message: "Role is required" });
 
     if (role !== "customer" && role !== "hotelier" && role !== "admin") {
@@ -35,26 +81,47 @@ export const register = async (req, res) => {
       });
     }
 
-    const existingUser = await User.findOne({ $or: [{ phone }] });
+    // const existingUser = await User.findOne({ $or: [{ phone }] });
+    const existingUser = await User.findOne({ phone }).session(session);
 
+    const newReferralCode = await generateReferralCode();
+
+    let referralData = {
+      referralPath: [],
+      upline: null,
+    };
+
+    if (referralCode) {
+      referralData = await processReferral(referralCode, session);
+    }
+
+    // USER ALREADY EXISTS
     if (existingUser) {
       // If userType is different, throw error
       if (existingUser.role !== role) {
+        await session.abortTransaction();
+        session.endSession();
+
         return res.status(400).json({
           status: "error",
           message: `Phone number already registered as ${existingUser.role}. Please use a different phone number.`,
         });
       }
+
       //for login
       if (existingUser.role === "hotelier") {
         const otp = generateOTP();
-        // const otpExpiry = new Date(Date.now() + 50 * 60 * 1000); // 5 mins
         const otpExpiry = new Date(Date.now() + 5 * 60 * 1000); // 5 mins
+
         existingUser.otp = otp;
         existingUser.otpExpiry = otpExpiry;
-        await existingUser.save();
 
-        res.status(201).json({
+        await existingUser.save({ session });
+
+        await session.commitTransaction();
+        session.endSession();
+
+        return res.status(201).json({
           data: {
             status: "success",
             message: "Login OTp Send successfully",
@@ -65,23 +132,48 @@ export const register = async (req, res) => {
               email: existingUser.email,
               phone: existingUser.phone,
               role: existingUser.role,
-              otp,
+              // otp,
             },
           },
         });
       }
     } else {
-      const user = await User.create({
-        firstName,
-        lastName,
-        email,
-        phone,
-        password,
-        status: "active",
-        otp: generateOTP(),
-        otpExpiry: new Date(Date.now() + 50 * 60 * 1000), // 5 mins
-        role,
-      });
+      // const user = await User.create({
+      //   firstName,
+      //   lastName,
+      //   email,
+      //   phone,
+      //   password,
+      //   status: "active",
+      //   otp: generateOTP(),
+      //   otpExpiry: new Date(Date.now() + 50 * 60 * 1000), // 5 mins
+      //   role,
+      //   referralCode: newReferralCode,
+      //     referredBy: referralData.upline,
+      //     referralPath: referralData.referralPath,
+      // });
+
+      const users = await User.create(
+        [
+          {
+            firstName,
+            lastName,
+            email,
+            phone,
+            password,
+            status: "active",
+            otp: generateOTP(),
+            otpExpiry: new Date(Date.now() + 5 * 60 * 1000), // 5 mins
+            role,
+            referralCode: newReferralCode,
+            referredBy: referralData.upline,
+            referralPath: referralData.referralPath,
+          },
+        ],
+        { session },
+      );
+
+      const user = users[0];
 
       // const token = generateToken(user._id, user.role);
       const message = "Registration successful";
@@ -96,11 +188,18 @@ export const register = async (req, res) => {
         isVerified: user.isVerified,
         status: user.status,
         otp: user.otp,
+        referralCode: user.referralCode,
+        referredBy: user.referredBy,
+        referralPath: user.referralPath,
       };
+
+      await session.commitTransaction();
+      session.endSession();
+
       //update property info for hotelier
       if (role === "hotelier") {
         // const propertyInfo = await PropertyInfo.create({ userId: user._id });
-        res.status(201).json({
+        return res.status(201).json({
           data: {
             status: "success",
             message,
@@ -109,7 +208,7 @@ export const register = async (req, res) => {
           //   token,
         });
       } else if (role === "admin") {
-        res.status(201).json({
+        return res.status(201).json({
           data: {
             status: "success",
             message,
@@ -118,7 +217,7 @@ export const register = async (req, res) => {
           //   token,
         });
       } else {
-        res.status(201).json({
+        return res.status(201).json({
           data: {
             status: "success",
             message,
@@ -129,8 +228,13 @@ export const register = async (req, res) => {
       }
     }
   } catch (error) {
+    await session.abortTransaction();
+    session.endSession();
+
     console.error(error);
-    res.status(500).json({ message: "Server error", error: error.message });
+    return res
+      .status(500)
+      .json({ message: "Server error", error: error.message });
   }
 };
 
@@ -212,18 +316,18 @@ export const register = async (req, res) => {
 // ===============================
 export const login = async (req, res) => {
   try {
+    console.log("Welcome to the Login controller");
     const { email, phone, password } = req.body;
 
     // ===============================
     // EMAIL + PASSWORD LOGIN
     // ===============================
     if (email && password) {
-      const user = await User.findOne({ email }).select("+password")
+      const user = await User.findOne({ email }).select("+password");
 
-      if (!user)
-        return res.status(400).json({ message: "User not found" })
+      if (!user) return res.status(400).json({ message: "User not found" });
 
-      if (user.provider === "google"){
+      if (user.provider === "google") {
         return res.status(400).json({
           message: "Use Google Sign-in",
         });
@@ -259,8 +363,7 @@ export const login = async (req, res) => {
     if (phone) {
       const user = await User.findOne({ phone });
 
-      if (!user)
-        return res.status(400).json({ message: "User not found" });
+      if (!user) return res.status(400).json({ message: "User not found" });
 
       if (user.provider === "google")
         return res.status(400).json({
@@ -271,6 +374,13 @@ export const login = async (req, res) => {
       user.otp = otp;
       user.otpExpiry = new Date(Date.now() + 5 * 60 * 1000);
       await user.save();
+
+      const template =
+"<#> {#var#} is your one time password to login in Juststay account. Thanks for using Juststay. Enjoy :-) IQ4cBruoNjH";
+
+      const message = template.replace("{#var#}", otp);
+
+      await sendSMS(user.phone, message);
 
       return res.status(200).json({
         message: "OTP sent successfully",
@@ -285,8 +395,6 @@ export const login = async (req, res) => {
     res.status(500).json({ message: "Server error", error: error.message });
   }
 };
-
-
 
 // ====================================================
 // @desc    Send OTP for phone login / verification
@@ -424,6 +532,8 @@ export const googleLogin = async (req, res) => {
     });
 
     if (!user) {
+      const newReferralCode = await generateReferralCode();
+
       user = await User.create({
         firstName: name?.split(" ")[0] || "",
         lastName: name?.split(" ")[1] || "",
@@ -434,6 +544,7 @@ export const googleLogin = async (req, res) => {
         googleId: sub,
         // phone: "0000000000", // dummy required field
         isVerified: true,
+        referralCode: newReferralCode,
       });
     }
 
@@ -454,6 +565,7 @@ export const googleLogin = async (req, res) => {
         role: user.role,
         avatar: user.avatar,
         provider: user.provider,
+        referralCode: user.referralCode,
       },
     });
   } catch (error) {
@@ -461,8 +573,6 @@ export const googleLogin = async (req, res) => {
     res.status(401).json({ message: "Google authentication failed" });
   }
 };
-
-
 
 export const facebookLogin = async (req, res) => {
   try {
@@ -475,15 +585,12 @@ export const facebookLogin = async (req, res) => {
     }
 
     // Verify token with Facebook Graph API
-    const fbResponse = await axios.get(
-      `https://graph.facebook.com/me`,
-      {
-        params: {
-          fields: "id,name,email,picture",
-          access_token: accessToken,
-        },
-      }
-    );
+    const fbResponse = await axios.get(`https://graph.facebook.com/me`, {
+      params: {
+        fields: "id,name,email,picture",
+        access_token: accessToken,
+      },
+    });
 
     const { id, name, email, picture } = fbResponse.data;
 
@@ -492,6 +599,8 @@ export const facebookLogin = async (req, res) => {
     });
 
     if (!user) {
+      const newReferralCode = await generateReferralCode();
+
       user = await User.create({
         firstName: name?.split(" ")[0] || "",
         lastName: name?.split(" ")[1] || "",
@@ -501,13 +610,14 @@ export const facebookLogin = async (req, res) => {
         provider: "facebook",
         facebookId: id,
         isVerified: true,
+        referralCode: newReferralCode,
       });
     }
 
     const token = jwt.sign(
       { userId: user._id, role: user.role },
       process.env.JWT_SECRET,
-      { expiresIn: "7d" }
+      { expiresIn: "7d" },
     );
 
     return res.status(200).json({
@@ -522,6 +632,7 @@ export const facebookLogin = async (req, res) => {
         avatar: user.avatar,
         role: user.role,
         provider: user.provider,
+        referralCode: user.referralCode,
       },
     });
   } catch (error) {
