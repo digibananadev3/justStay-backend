@@ -25,7 +25,6 @@ export const listAmenities = async (req, res) => {
       Amenity.countDocuments(filter),
     ]);
 
-    console.log("This is the total value of list Amenities", total);
 
     const data = rows.map(normalizeAmenity);
     return res.status(200).json({ success: true, data, pagination: { total, page: parseInt(page), limit: parseInt(limit), totalPages: Math.ceil(total / parseInt(limit)) } });
@@ -195,7 +194,6 @@ export const deleteAmenity = async (req, res) => {
     }
 
 
-    console.log("This is the value of the ammenity isActive value", amenity.isActive);
     if(amenity?.isActive === false){
       return res.status(400).json({
         success : true,

@@ -22,10 +22,8 @@ export const createNotificationApi = async (req, res) => {
 
 // export const testNotificationMessageApi = async (req, res) => {
 //   try {
-//     console.log("Received request body:", req.body);
 //     const { mobile, message } = req.body;
 
-//     console.log("This is the value of the body", mobile, message);
 
 //     if (!mobile || !message) {
 //       return res.status(400).json({
@@ -36,7 +34,6 @@ export const createNotificationApi = async (req, res) => {
 
 //     const result = await sendSMS(mobile, message);
 
-//     console.log("SMS API Response:", result);
 
 //     res.json({
 //       success: true,
@@ -66,8 +63,6 @@ export const testNotificationMessageApi = async (req, res) => {
 
     const message = template.replace("{#var#}", name.trim());
 
-    console.log("Generated Message:", JSON.stringify(message));
-    console.log("Length:", message.length);
 
     const result = await sendSMS(mobile, message);
 

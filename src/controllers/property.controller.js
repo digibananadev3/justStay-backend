@@ -44,7 +44,6 @@ export const updatePropertyRating = async (propertyId) => {
 export const updatePropertyPricing = async (propertyId) => {
   try {
     if (!mongoose.Types.ObjectId.isValid(propertyId)) {
-      console.log("Invalid propertyId:", propertyId);
       return;
     }
 
@@ -294,12 +293,47 @@ export const sortAndFilterProperties = async (req, res) => {
       sortBy,
       city,
       state,
+      search
     } = req.query;
+
+    console.log("query", req.query);
 
     const matchQuery = {
       isDeleted: false,
       listingStatus: { $in: ["approved", "pending"] },
     };
+
+    // -----------------------------
+    // Escape Regex (Security Fix)
+    // -----------------------------
+    const escapeRegex = (text) =>{
+      text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    }
+
+    // -----------------------------
+    // Search Filter
+    // -----------------------------
+        if (search && search.trim()) {
+          const safeSearch = escapeRegex(search.trim());
+          const orConditions = [
+            { "basicPropertyDetails.name": { $regex: search, $options: "i" } },
+            { "location.state": { $regex: search, $options: "i" }  },
+            { "location.city": { $regex: search, $options: "i" }  },
+            { "location.area": { $regex: search, $options: "i" }  },
+             { "location.landmarks": { $regex: search, $options: "i" } },
+            { "contactDetails.email": { $regex: search, $options: "i" } },
+          ];
+    
+          // If search is a valid Mongo ObjectId, include it
+          if (mongoose.Types.ObjectId.isValid(search)) {
+            orConditions.push({ _id: new mongoose.Types.ObjectId(search) });
+          }
+    
+           matchQuery.$and = [
+        ...(matchQuery.$and || []),
+        { $or: orConditions },
+      ];
+        }
 
     // -----------------------------
     // Location Filter
@@ -474,7 +508,6 @@ export const sortAndFilterProperties = async (req, res) => {
 // -----------------------------
 export const getTopPicksForUser = async (req, res) => {
   try {
-
     const { longitude, latitude } = req.query;
 
     if (!longitude || !latitude) {
@@ -580,10 +613,7 @@ export const setPropertyCoordinates = async (req, res) => {
 // -----------------------------
 // export const getSimilarProperties = async (req, res) => {
 //   try {
-//     console.log("Welcome to the getSimilarProperties controller! ");
 //     const { propertyId } = req.params;
-//     console.log("This is the propertyId received from the request parameters:", propertyId);
-
 //     if (!mongoose.Types.ObjectId.isValid(propertyId)) {
 //       return res.status(400).json({
 //         success: false,
@@ -594,7 +624,6 @@ export const setPropertyCoordinates = async (req, res) => {
 //     // 1. Get current property
 //     const currentProperty = await PropertyInfo.findById(propertyId);
 
-//     console.log("Current property details:", currentProperty);
 
 //     if (!currentProperty || currentProperty.isDeleted) {
 //       return res.status(404).json({
@@ -608,7 +637,6 @@ export const setPropertyCoordinates = async (req, res) => {
 //     const basePrice = currentProperty.pricing.minOneNightPrice || 0;
 //     const rating = currentProperty.guestAverageRating || 0;
 
-//     console.log("Similarity criteria - City:", city, "Property Type:", propertyType, "Base Price:", basePrice, "Rating:", rating);
 //     // 2. Build similarity query
 //     const similarProperties = await PropertyInfo.find({
 //       _id: { $ne: propertyId }, // exclude current property

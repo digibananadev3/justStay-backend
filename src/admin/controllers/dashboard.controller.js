@@ -9,7 +9,6 @@ const endOfDayUTC = (d) => new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth()
 
 export const getAdminOverview = async (req, res) => {
   try {
-    console.log('hi');
     const now = new Date();
     const sevenDaysAgo = new Date(now);
     sevenDaysAgo.setUTCDate(now.getUTCDate() - 6);

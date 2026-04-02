@@ -9,21 +9,30 @@ import {
   // Food
   createFood,
   getAllFoods,
+  getFoodsByRestaurant,
+  getFoodById,
+  updateFood,
   deleteFood,
+  assignFoodToRoom,
+  getSpecificRoomOrders,
+//   cancelPropertyFoodOrder,
+//   deleteFood,
 
-  // Property Food
-  assignFood,
-  getSpecificPropertyFood,
-  getRestaurantStock,
-  updateStock,
-  removeFood,
+//   // Property Food
+// //   assignFood,
+//   getSpecificPropertyFood,
+//   getRestaurantStock,
+//   updateStock,
+//   removeFood,
 
-  // Room Food
-  createRoomFoodOrder,
-  getFoodById
+//   // Room Food
+//   createRoomFoodOrder,
+//   getFoodById
 } from "../controllers/food.controller.js";
 
 const router = express.Router();
+
+
 
 /* =========================
    RESTAURANT ROUTES
@@ -33,27 +42,24 @@ router.get("/restaurants", getAllRestaurants);
 router.get("/restaurants/:id", getSpecificRestaurant);
 router.delete("/restaurants/:id", deleteRestaurant);
 
+
+
 /* =========================
    GLOBAL FOOD ROUTES
 ========================= */
-router.post("/foods", createFood);
+router.post("/restaurant/:restaurantId/foods", createFood);
 router.get("/foods", getAllFoods);
+router.get("/restaurant/:restaurantId/foods", getFoodsByRestaurant);
 router.get("/foods/:id", getFoodById);
-router.delete("/foods/:id", deleteFood);
+router.put("/update/foods/:id", updateFood);
+router.delete("/delete/food/:id", deleteFood);
 
 
 /* =========================
-   PROPERTY → RESTAURANT FOOD
+   PROPERTY Room FOOD
 ========================= */
-router.post("/property-food", assignFood);
-router.get("/property-food/property/:id", getSpecificPropertyFood);
-router.get("/property-food/restaurant/:restaurantId", getRestaurantStock);
-router.put("/property-food/:id", updateStock);
-router.delete("/property-food/:id", removeFood);
-
-/* =========================
-   ROOM FOOD ORDER
-========================= */
-router.post("/room-food", createRoomFoodOrder);
+router.post("/assign/food", assignFoodToRoom);
+router.get("/roomFood/:roomId", getSpecificRoomOrders);
+// router.get("/cancel/food/:id", cancelPropertyFoodOrder);
 
 export default router;

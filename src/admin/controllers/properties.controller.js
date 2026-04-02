@@ -334,11 +334,8 @@ export const getPropertyDocuments = async (req, res) => {
 // Add documents (array)
 export const addPropertyDocuments = async (req, res) => {
   try {
-    console.log("Coming to the add Property Document");
     const { propertyId } = req.params;
     const { documents = [] } = req.body;
-    console.log("This is the value of the propertyId", req.params);
-    console.log("This is the value of the documents", documents);
     if (!Array.isArray(documents) || documents.length === 0) {
       return res
         .status(400)
@@ -353,7 +350,6 @@ export const addPropertyDocuments = async (req, res) => {
       expiresAt: d.expiresAt,
     }));
 
-    console.log("This is the value of the docs of the add property document", docs);
 
     const updated = await Property.findByIdAndUpdate(
       propertyId,
@@ -361,7 +357,6 @@ export const addPropertyDocuments = async (req, res) => {
       { new: true, runValidators: true }
     ).select("documents");
 
-    console.log("This is the value of the updated of the add property document", updated);
 
     if (!updated)
       return res
@@ -532,7 +527,6 @@ export const addPropertyMediaPhotos = async (req, res) => {
     const { propertyId } = req.params;
     const { photos = [] } = req.body;
 
-    console.log("This is the photos of the addPropertyMediaPhotos", photos, req.body);
     if (!Array.isArray(photos) || photos.length === 0) {
       return res
         .status(400)
@@ -1044,7 +1038,6 @@ export const deleteProperty = async (req, res) => {
 // Add amenities to a property
 export const addPropertyAmenities = async (req, res) => {
   try {
-    console.log("Welcome to the add property amenties controller");
     const { propertyId } = req.params;
     const { amenities } = req.body;
 
@@ -1112,7 +1105,6 @@ export const addPropertyAmenities = async (req, res) => {
 // Remove amenities from a property
 export const removePropertyAmenities = async (req, res) => {
   try {
-    console.log("Welcome to remove property amenities controller");
 
     const { propertyId } = req.params;
     const { amenities } = req.body; // array of amenity names
@@ -1308,7 +1300,7 @@ export const getPropertyStats = async (req, res) => {
 
     // Fallback to dummy data if no stats found
     if (totalProperties === 0) {
-      console.log("Using dummy statistics data");
+      ("Using dummy statistics data");
       // Add dummy data fallback here if needed
     }
 

@@ -102,7 +102,6 @@ export const sendOtpToPhone = async (phone) => {
   }
 
   // TODO: Integrate SMS service here (Twilio, Fast2SMS)
-  console.log(`📱 OTP for ${phone}: ${otp}`);
 
   return { message: "OTP sent successfully" };
 };

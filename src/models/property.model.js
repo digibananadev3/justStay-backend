@@ -235,7 +235,7 @@ const propertySchema = new Schema(
 
     hotelRating: {
       type: Number, // Official star rating
-      min: 1,
+      min: 0,
       max: 5,
       default: 0,
       index: true,

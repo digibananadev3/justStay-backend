@@ -12,12 +12,10 @@ import PropertyInfo from "../../models/property.model.js";
 export const getGuestOffersSummary = async (req, res) => {
   try {
     const { id } = req.params;
-    console.log("Fetching offers summary for guest ID:", id);
     const user = await User.findOne({ _id: id, role: "customer" }).select(
       "_id",
     );
 
-    console.log("Guest found:", !!user);
     if (!user)
       return res
         .status(404)
@@ -252,7 +250,6 @@ export const createOffer = async (req, res) => {
       tags,
     } = req.body;
 
-    console.log("Received offer creation request:", req.body);
 
     if (!mongoose.Types.ObjectId.isValid(userId)) {
       return res
@@ -315,7 +312,6 @@ export const createOffer = async (req, res) => {
         });
     }
 
-    console.log("Validating properties:", properties);
 
 //  Check every property id of the properties array exists in the database
     if (properties && properties.length > 0) {
@@ -345,7 +341,6 @@ export const createOffer = async (req, res) => {
 
     const user = await User.findById(userId);
 
-    console.log("Creating offer for user:", userId, "User found:", user);
 
     if (!user || user.role !== "hotelier" && user.role !== "admin") {
       return res
@@ -630,19 +625,17 @@ export const toggleOfferStatus = async (req, res) => {
 
 export const getOffersYouWillLike = async (req, res) => {
   try {
-    const { id } = req.query;
-    console.log("Fetching personalized offers for guest ID:", id);
+    // const { id } = req.query;
+    // console.log("Fetching personalized offers for guest ID:", id);
 
-    const user = await User.findOne({ _id: id, role: "customer" }).select("_id");
-    console.log("Guest found:", user);
+    // const user = await User.findOne({ _id: id, role: "customer" }).select("_id");
+    // console.log("Guest found:", user);
 
-    if (!user)
-      return res
-        .status(404)
-        .json({ success: false, message: "Guest not found" });
-
+    // if (!user)
+    //   return res
+    //     .status(404)
+    //     .json({ success: false, message: "Guest not found" });
     const now = new Date();
-    console.log("Current date:", now);
 
     const offers = await Offer.find({
       isActive: true,
@@ -651,7 +644,7 @@ export const getOffersYouWillLike = async (req, res) => {
     })
       .sort({ createdAt: -1 })
       .limit(10)
-      .populate("properties")
+      // .populate("properties")
       .lean();
 
     res.json({

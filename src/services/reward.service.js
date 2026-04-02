@@ -34,7 +34,6 @@ const processBookingReward = async (booking, session) => {
     const rewardAmount =
       (bookingAmount * rewardPercentages[level]) / 100;
 
-      console.log("Reward Amount", rewardAmount);
 
     if (rewardAmount <= 0) continue;
 

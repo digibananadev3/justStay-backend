@@ -32,15 +32,12 @@ import PropertyType from '../../models/propertyType.model.js';
 
 export const getPropertyListTypes = async (req, res) => {
   try {
-    console.log("This is the value", req.query);
     const { propertyTypeId, isActive } = req.query;
-    console.log("This is the value of the property", propertyTypeId);
     const query = {};
     
     if (propertyTypeId) query.propertyTypeId = propertyTypeId;
 
     if (isActive === 'true' || isActive === 'false') query.isActive = isActive === 'true';
-    console.log("query", query);
 
 
     // const items = await PropertyListType.find(query)
@@ -48,8 +45,6 @@ export const getPropertyListTypes = async (req, res) => {
       .populate('propertyTypeId')
       .sort({ PropertyListTypeName: 1 })
       .lean();
-
-      console.log("items", items);
 
     return res.status(200).json({ success: true, data: items });
   } catch (error) {

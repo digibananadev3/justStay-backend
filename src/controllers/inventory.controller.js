@@ -2,6 +2,10 @@ import mongoose from "mongoose";
 import RoomInventory from "../models/roomInventory.model.js";
 import PropertyRoom from "../models/propertyRoom.model.js";
 
+// ─────────────────────────────────────────────
+// Utility helpers
+// ─────────────────────────────────────────────
+
 const parseISODate = (s) => new Date(`${s}T00:00:00.000Z`);
 const formatISODate = (d) => d.toISOString().slice(0, 10);
 
@@ -14,15 +18,15 @@ const isOverlap = (aStart, aEnd, bStart, bEnd) => {
   return Math.max(aStart, bStart) < Math.min(aEnd, bEnd);
 };
 
-const minutesToTime = (m) => {
+// FIX: was missing `return` — caused getAvailableSlots to return undefined from/to
+const minutesToTime = (m) =>
   String(Math.floor(m / 60)).padStart(2, "0") +
-    ":" +
-    String(m % 60).padStart(2, "0");
-};
+  ":" +
+  String(m % 60).padStart(2, "0");
 
-function reminderTime(time) {
+// Normalise a stored time string that may carry hours >= 24 (cross-midnight slots)
+function normalizeTime(time) {
   let [h, m] = time.split(":").map(Number);
-
   let nextDay = false;
 
   if (h >= 24) {
@@ -36,7 +40,10 @@ function reminderTime(time) {
   return { time: `${hh}:${mm}`, nextDay };
 }
 
-// normalize inventory day response with all keys present
+// ─────────────────────────────────────────────
+// Normalize a RoomInventory document for API responses.
+// FIX: removed all references to `cp`; schema uses `withBreakfast`.
+// ─────────────────────────────────────────────
 const normalizeDay = (doc) => {
   const d = doc || {};
   return {
@@ -44,15 +51,22 @@ const normalizeDay = (doc) => {
     roomId: String(d.roomId || ""),
     date: d.date || null,
     allotment: typeof d.allotment === "number" ? d.allotment : 0,
+    bookedRoomNumbers: Array.isArray(d.bookedRoomNumbers)
+      ? d.bookedRoomNumbers
+      : [],
     open: d.open !== false,
     stopSell: d.stopSell === true,
     notes: d.notes || "",
     sellStatus: d.sellStatus || "sellable",
     nonSellReasons: Array.isArray(d.nonSellReasons) ? d.nonSellReasons : [],
+
+    // FIX: schema field is `withBreakfast`, not `cp`
     baseRateSummary: {
       roomOnly: d.baseRateSummary?.roomOnly ?? 0,
-      cp: d.baseRateSummary?.cp ?? 0,
+      withBreakfast: d.baseRateSummary?.withBreakfast ?? 0,
     },
+
+    // FIX: schema ratePlans has `roomOnly` and `withBreakfast` — removed `cp`
     ratePlans: {
       roomOnly: {
         baseAdults: d.ratePlans?.roomOnly?.baseAdults ?? 3,
@@ -65,30 +79,50 @@ const normalizeDay = (doc) => {
         perChild9to12: d.ratePlans?.roomOnly?.perChild9to12 ?? null,
         perExtraAdult: d.ratePlans?.roomOnly?.perExtraAdult ?? null,
       },
-      cp: {
-        baseAdults: d.ratePlans?.cp?.baseAdults ?? 3,
+      withBreakfast: {
+        baseAdults: d.ratePlans?.withBreakfast?.baseAdults ?? 3,
         adults: {
-          a1: d.ratePlans?.cp?.adults?.a1 ?? null,
-          a2: d.ratePlans?.cp?.adults?.a2 ?? null,
-          a3: d.ratePlans?.cp?.adults?.a3 ?? null,
+          a1: d.ratePlans?.withBreakfast?.adults?.a1 ?? null,
+          a2: d.ratePlans?.withBreakfast?.adults?.a2 ?? null,
+          a3: d.ratePlans?.withBreakfast?.adults?.a3 ?? null,
         },
-        perChild0to8Free: d.ratePlans?.cp?.perChild0to8Free !== false,
-        perChild9to12: d.ratePlans?.cp?.perChild9to12 ?? null,
-        perExtraAdult: d.ratePlans?.cp?.perExtraAdult ?? null,
+        perChild0to8Free:
+          d.ratePlans?.withBreakfast?.perChild0to8Free !== false,
+        perChild9to12: d.ratePlans?.withBreakfast?.perChild9to12 ?? null,
+        perExtraAdult: d.ratePlans?.withBreakfast?.perExtraAdult ?? null,
       },
     },
+
     restrictions: {
-      minAdvanceBookingTime: d.restrictions?.minAdvanceBookingTime || "11:59PM",
+      minAdvanceBookingTime:
+        d.restrictions?.minAdvanceBookingTime || "11:59PM",
       bookingWindowDays: d.restrictions?.bookingWindowDays ?? 450,
       maxAdvanceDays: d.restrictions?.maxAdvanceDays ?? 450,
       minLOS: d.restrictions?.minLOS ?? 1,
       maxLOS: d.restrictions?.maxLOS ?? 450,
     },
+
+    timeBlocks: Array.isArray(d.timeBlocks) ? d.timeBlocks : [],
+    nightBlock: d.nightBlock || {
+      bookingId: null,
+      roomNumber: null,
+      checkOutTime: null,
+      isBooked: false,
+    },
+    dateToDateLock: d.dateToDateLock || {
+      bookingId: null,
+      roomNumber: null,
+      isBooked: false,
+    },
+
     createdAt: d.createdAt || null,
     updatedAt: d.updatedAt || null,
   };
 };
 
+// ─────────────────────────────────────────────
+// GET /inventory/calendar?month=YYYY-MM&propertyId=&roomId=
+// ─────────────────────────────────────────────
 export const getInventoryCalendar = async (req, res) => {
   try {
     const { month, roomId, propertyId } = req.query;
@@ -112,25 +146,32 @@ export const getInventoryCalendar = async (req, res) => {
       roomFilter.propertyId = new mongoose.Types.ObjectId(propertyId);
     }
 
+    // FIX: `price` field does not exist — schema uses `pricing` with nested mealPricingSchema
     const rooms = await PropertyRoom.find(roomFilter)
-      .select("_id type price.oneNight")
+      .select("_id type pricing")
       .lean();
+
     const roomIds = rooms.map((r) => r._id);
 
-    // Pull inventory for the month for those rooms
+    // Pull inventory for the month
     const invFilter = { date: { $gte: start, $lt: end } };
     if (roomIds.length > 0) invFilter.roomId = { $in: roomIds };
+
     const rows = await RoomInventory.find(invFilter)
       .sort({ roomId: 1, date: 1 })
       .lean();
 
-    // Build date keys for the whole month
+    // Build date list for the whole month
     const dates = [];
-    for (let d = new Date(start); d < end; d.setUTCDate(d.getUTCDate() + 1)) {
+    for (
+      let d = new Date(start);
+      d < end;
+      d.setUTCDate(d.getUTCDate() + 1)
+    ) {
       dates.push(formatISODate(d));
     }
 
-    // Index inventory by roomId+date
+    // Index inventory by roomId|date
     const idx = new Map();
     for (const r of rows) {
       const key = `${String(r.roomId)}|${formatISODate(r.date)}`;
@@ -150,24 +191,36 @@ export const getInventoryCalendar = async (req, res) => {
           nonSellReasons: Array.isArray(rec?.nonSellReasons)
             ? rec.nonSellReasons
             : [],
+          // FIX: schema uses `withBreakfast`, not `cp`
           baseRateSummary: {
             roomOnly: rec?.baseRateSummary?.roomOnly ?? 0,
-            cp: rec?.baseRateSummary?.cp ?? 0,
+            withBreakfast: rec?.baseRateSummary?.withBreakfast ?? 0,
           },
         };
       });
+
+      // FIX: pricing.oneNight is a mealPricingSchema object { roomOnly, withBreakfast }
+      const oneNightRoomOnly = room?.pricing?.oneNight?.roomOnly ?? 0;
+      const oneNightWithBreakfast =
+        room?.pricing?.oneNight?.withBreakfast ?? 0;
+
       return {
         roomId: String(room._id),
         roomName: room.type || "",
         type: room.type || "",
         open: true,
-        baseRate: room?.price?.oneNight ?? 0,
+        // FIX: `price.oneNight` does not exist — using correct nested path
+        baseRate: oneNightRoomOnly,
         plans: {
           roomOnly: {
-            price: room?.price?.oneNight ?? 0,
-            hasRate: (room?.price?.oneNight ?? 0) > 0,
+            price: oneNightRoomOnly,
+            hasRate: oneNightRoomOnly > 0,
           },
-          cp: { price: null, hasRate: false },
+          // FIX: `cp` does not exist — replaced with `withBreakfast`
+          withBreakfast: {
+            price: oneNightWithBreakfast,
+            hasRate: oneNightWithBreakfast > 0,
+          },
         },
         days,
       };
@@ -191,7 +244,9 @@ export const getInventoryCalendar = async (req, res) => {
   }
 };
 
-// Get a single inventory day
+// ─────────────────────────────────────────────
+// GET /inventory/:roomId/:date
+// ─────────────────────────────────────────────
 export const getInventoryDay = async (req, res) => {
   try {
     const { roomId, date } = req.params;
@@ -213,12 +268,18 @@ export const getInventoryDay = async (req, res) => {
   }
 };
 
-// Patch a single inventory day (partial)
+// ─────────────────────────────────────────────
+// PATCH /inventory/:roomId/:date
+// FIX: added all valid schema top-level fields to `allowed`
+// ─────────────────────────────────────────────
 export const patchInventoryDay = async (req, res) => {
   try {
     const { roomId, date } = req.params;
+
+    // FIX: added bookedRoomNumbers, timeBlocks, nightBlock, dateToDateLock
     const allowed = [
       "allotment",
+      "bookedRoomNumbers",
       "open",
       "stopSell",
       "notes",
@@ -227,16 +288,22 @@ export const patchInventoryDay = async (req, res) => {
       "baseRateSummary",
       "ratePlans",
       "restrictions",
+      "timeBlocks",
+      "nightBlock",
+      "dateToDateLock",
     ];
+
     const set = {};
     for (const k of allowed) {
       if (typeof req.body[k] !== "undefined") set[k] = req.body[k];
     }
+
     const updated = await RoomInventory.findOneAndUpdate(
       { roomId, date: parseISODate(date) },
       { $set: set },
-      { new: true, upsert: true, runValidators: true },
+      { new: true, upsert: true, runValidators: true }
     );
+
     return res.status(200).json({
       success: true,
       message: "Inventory day updated",
@@ -250,20 +317,25 @@ export const patchInventoryDay = async (req, res) => {
   }
 };
 
-// Update only day rates and restrictions
+// ─────────────────────────────────────────────
+// PUT /inventory/:roomId/:date/rates
+// ─────────────────────────────────────────────
 export const updateDayRatesAndRestrictions = async (req, res) => {
   try {
     const { roomId, date } = req.params;
     const { baseRateSummary, ratePlans, restrictions } = req.body;
+
     const set = {};
     if (baseRateSummary) set.baseRateSummary = baseRateSummary;
     if (ratePlans) set.ratePlans = ratePlans;
     if (restrictions) set.restrictions = restrictions;
+
     const updated = await RoomInventory.findOneAndUpdate(
       { roomId, date: parseISODate(date) },
       { $set: set },
-      { new: true, upsert: true, runValidators: true },
+      { new: true, upsert: true, runValidators: true }
     );
+
     return res.status(200).json({
       success: true,
       message: "Rates & restrictions updated",
@@ -277,7 +349,9 @@ export const updateDayRatesAndRestrictions = async (req, res) => {
   }
 };
 
-// Delete a day
+// ─────────────────────────────────────────────
+// DELETE /inventory/:roomId/:date
+// ─────────────────────────────────────────────
 export const deleteInventoryDay = async (req, res) => {
   try {
     const { roomId, date } = req.params;
@@ -287,7 +361,7 @@ export const deleteInventoryDay = async (req, res) => {
     });
     return res.status(200).json({
       success: true,
-      message: out ? "Deleted" : "No record",
+      message: out ? "Deleted" : "No record found",
       data: normalizeDay(out || { roomId, date: parseISODate(date) }),
     });
   } catch (error) {
@@ -298,6 +372,9 @@ export const deleteInventoryDay = async (req, res) => {
   }
 };
 
+// ─────────────────────────────────────────────
+// PUT /inventory/:roomId/:date/upsert
+// ─────────────────────────────────────────────
 export const upsertInventoryDay = async (req, res) => {
   try {
     const { roomId, date } = req.params;
@@ -306,7 +383,7 @@ export const upsertInventoryDay = async (req, res) => {
     const doc = await RoomInventory.findOneAndUpdate(
       { roomId, date: parseISODate(date) },
       { $set: { allotment, open, stopSell, notes } },
-      { new: true, upsert: true, runValidators: true },
+      { new: true, upsert: true, runValidators: true }
     );
 
     res.status(200).json({
@@ -328,6 +405,9 @@ export const upsertInventoryDay = async (req, res) => {
   }
 };
 
+// ─────────────────────────────────────────────
+// POST /inventory/bulk
+// ─────────────────────────────────────────────
 export const bulkInventory = async (req, res) => {
   try {
     const {
@@ -339,6 +419,7 @@ export const bulkInventory = async (req, res) => {
       open,
       stopSell,
     } = req.body;
+
     if (!Array.isArray(roomIds) || roomIds.length === 0)
       return res
         .status(400)
@@ -351,7 +432,12 @@ export const bulkInventory = async (req, res) => {
     const start = parseISODate(dateFrom);
     const end = parseISODate(dateTo);
     const days = [];
-    for (let d = new Date(start); d <= end; d.setUTCDate(d.getUTCDate() + 1)) {
+
+    for (
+      let d = new Date(start);
+      d <= end;
+      d.setUTCDate(d.getUTCDate() + 1)
+    ) {
       const dow = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][
         d.getUTCDay()
       ];
@@ -361,12 +447,12 @@ export const bulkInventory = async (req, res) => {
     let affected = 0;
     for (const id of roomIds) {
       for (const d of days) {
-        const resu = await RoomInventory.updateOne(
+        const result = await RoomInventory.updateOne(
           { roomId: id, date: d },
           { $set: { allotment, open, stopSell } },
-          { upsert: true },
+          { upsert: true }
         );
-        affected += resu.matchedCount + resu.upsertedCount || 1;
+        affected += result.matchedCount + result.upsertedCount || 1;
       }
     }
 
@@ -383,9 +469,13 @@ export const bulkInventory = async (req, res) => {
   }
 };
 
+// ─────────────────────────────────────────────
+// POST /inventory/toggle-open
+// ─────────────────────────────────────────────
 export const toggleOpenClose = async (req, res) => {
   try {
     const { roomIds = [], dateFrom, dateTo, open } = req.body;
+
     if (!Array.isArray(roomIds) || roomIds.length === 0)
       return res
         .status(400)
@@ -398,17 +488,17 @@ export const toggleOpenClose = async (req, res) => {
     const start = parseISODate(dateFrom);
     const end = parseISODate(dateTo);
 
-    const resu = await RoomInventory.updateMany(
+    const result = await RoomInventory.updateMany(
       { roomId: { $in: roomIds }, date: { $gte: start, $lte: end } },
-      { $set: { open } },
+      { $set: { open } }
     );
 
     res.status(200).json({
       success: true,
       message: "Open/close updated",
       data: {
-        matched: resu.matchedCount ?? resu.n,
-        modified: resu.modifiedCount ?? resu.nModified,
+        matched: result.matchedCount ?? result.n,
+        modified: result.modifiedCount ?? result.nModified,
       },
     });
   } catch (error) {
@@ -419,9 +509,12 @@ export const toggleOpenClose = async (req, res) => {
   }
 };
 
+// ─────────────────────────────────────────────
+// POST /inventory/bulk-save
+// ─────────────────────────────────────────────
 export const saveBulkChanges = async (req, res) => {
   try {
-    const { inventory = [], rates = [] } = req.body;
+    const { inventory = [] } = req.body;
 
     let invCount = 0;
     for (const i of inventory) {
@@ -429,14 +522,16 @@ export const saveBulkChanges = async (req, res) => {
       const u = await RoomInventory.updateOne(
         { roomId: i.roomId, date: d },
         {
-          $set: { allotment: i.allotment, open: i.open, stopSell: i.stopSell },
+          $set: {
+            allotment: i.allotment,
+            open: i.open,
+            stopSell: i.stopSell,
+          },
         },
-        { upsert: true },
+        { upsert: true }
       );
       invCount += u.matchedCount + u.upsertedCount || 1;
     }
-
-    // rates saved in rates.controller via dedicated endpoints; included here only for inventory portion
 
     res.status(200).json({
       success: true,
@@ -451,17 +546,25 @@ export const saveBulkChanges = async (req, res) => {
   }
 };
 
-// New utility functions for time slot management
+// ─────────────────────────────────────────────
+// POST /inventory/check-slot
+// ─────────────────────────────────────────────
 export const checkRoomSlot = async (req, res) => {
   try {
     const { roomId, date, checkInTime, plan } = req.body;
 
+    // FIX: night plan is handled via nightBlock, not timeBlocks
+    if (plan === "night") {
+      return checkNightAvailability(req, res);
+    }
+
     let duration;
     if (plan === "3hr") duration = 180;
     else if (plan === "6hr") duration = 360;
-    else if (plan === "night") {
-      return checkNightAvailability(req, res);
-    }
+    else
+      return res
+        .status(400)
+        .json({ success: false, message: "Invalid plan. Use 3hr, 6hr, or night." });
 
     const startMin = timeToMinutes(checkInTime);
     const endMin = startMin + duration;
@@ -478,7 +581,7 @@ export const checkRoomSlot = async (req, res) => {
     for (const b of doc.timeBlocks) {
       const bStart = timeToMinutes(b.from);
       const bEnd = timeToMinutes(b.to);
-      if (isOverlap(startMin, endMin, bStart, bEnd)) {
+      if (b.isBooked && isOverlap(startMin, endMin, bStart, bEnd)) {
         return res.json({
           success: true,
           available: false,
@@ -493,6 +596,10 @@ export const checkRoomSlot = async (req, res) => {
   }
 };
 
+// ─────────────────────────────────────────────
+// Internal: check nightBlock availability across two days
+// FIX: schema has a dedicated `nightBlock` subdoc — not a timeBlocks entry with plan "night"
+// ─────────────────────────────────────────────
 const checkNightAvailability = async (req, res) => {
   const { roomId, date } = req.body;
 
@@ -500,18 +607,25 @@ const checkNightAvailability = async (req, res) => {
   const nextDay = new Date(startDay);
   nextDay.setUTCDate(nextDay.getUTCDate() + 1);
 
-  const day1 = await RoomInventory.findOne({ roomId, date: startDay });
-  const day2 = await RoomInventory.findOne({ roomId, date: nextDay });
+  const [day1, day2] = await Promise.all([
+    RoomInventory.findOne({ roomId, date: startDay }),
+    RoomInventory.findOne({ roomId, date: nextDay }),
+  ]);
 
-  const hasBlock = (doc) => doc?.timeBlocks?.some((b) => b.plan === "night");
+  // FIX: check nightBlock.isBooked — `plan: "night"` does not exist in timeBlocks enum
+  const isNightBooked = (doc) => doc?.nightBlock?.isBooked === true;
 
-  if (hasBlock(day1) || hasBlock(day2)) {
+  if (isNightBooked(day1) || isNightBooked(day2)) {
     return res.json({ success: true, available: false });
   }
 
   return res.json({ success: true, available: true });
 };
 
+// ─────────────────────────────────────────────
+// Internal utility: push a time block onto an inventory day.
+// FIX: now sets isBooked: true and accepts roomNumber
+// ─────────────────────────────────────────────
 export const blockRoomSlot = async (
   roomId,
   date,
@@ -519,18 +633,24 @@ export const blockRoomSlot = async (
   to,
   plan,
   bookingId,
+  roomNumber = null
 ) => {
   await RoomInventory.updateOne(
     { roomId, date: parseISODate(date) },
     {
       $push: {
-        timeBlocks: { from, to, plan, bookingId },
+        // FIX: isBooked: true and roomNumber were missing
+        timeBlocks: { from, to, plan, bookingId, roomNumber, isBooked: true },
       },
     },
-    { upsert: true },
+    { upsert: true }
   );
 };
 
+// ─────────────────────────────────────────────
+// GET /inventory/available-slots?roomId=&date=
+// FIX: minutesToTime was missing return — free slot from/to were always undefined
+// ─────────────────────────────────────────────
 export const getAvailableSlots = async (req, res) => {
   try {
     const { roomId, date } = req.query;
@@ -541,9 +661,11 @@ export const getAvailableSlots = async (req, res) => {
     }).lean();
 
     const workStart = 10 * 60; // 10:00
-    const workEnd = 22 * 60; // 22:00
+    const workEnd = 22 * 60;   // 22:00
 
+    // Only consider actually booked blocks
     const booked = (day?.timeBlocks || [])
+      .filter((b) => b.isBooked)
       .map((b) => ({
         start: timeToMinutes(b.from),
         end: timeToMinutes(b.to),
@@ -556,7 +678,7 @@ export const getAvailableSlots = async (req, res) => {
     for (const b of booked) {
       if (b.start > cursor) {
         free.push({
-          from: minutesToTime(cursor),
+          from: minutesToTime(cursor),   // FIX: now returns actual string
           to: minutesToTime(b.start),
         });
       }
@@ -576,6 +698,9 @@ export const getAvailableSlots = async (req, res) => {
   }
 };
 
+// ─────────────────────────────────────────────
+// GET /inventory/blocked-slots?date=&roomId=&propertyId=
+// ─────────────────────────────────────────────
 export const getBlockedSlotsOfDay = async (req, res) => {
   try {
     const { propertyId, roomId, date } = req.query;
@@ -594,7 +719,6 @@ export const getBlockedSlotsOfDay = async (req, res) => {
       const rooms = await PropertyRoom.find({ propertyId })
         .select("_id")
         .lean();
-
       const roomIds = rooms.map((r) => r._id);
       filter.roomId = { $in: roomIds };
     } else {
@@ -608,17 +732,11 @@ export const getBlockedSlotsOfDay = async (req, res) => {
       .select("roomId timeBlocks")
       .lean();
 
-    // const result = days.map(d => ({
-    //   roomId: String(d.roomId),
-    //   timeBlocks: d.timeBlocks || []
-    // }));
-
     const result = days.map((d) => ({
       roomId: String(d.roomId),
       timeBlocks: (d.timeBlocks || []).map((tb) => {
-        const from = reminderTime(tb.from);
-        const to = reminderTime(tb.to);
-
+        const from = normalizeTime(tb.from);
+        const to = normalizeTime(tb.to);
         return {
           ...tb,
           from: from.time,

@@ -1,6 +1,8 @@
 import mongoose from "mongoose";
 const { Schema } = mongoose;
 
+
+
 // -----------------------------
 // Enum definitions
 // -----------------------------
@@ -82,6 +84,8 @@ const propertyRoomSchema = new Schema(
       oneNight: { type: mealPricingSchema, required: true },
       threeHours: { type: mealPricingSchema, required: true },
       sixHours: { type: mealPricingSchema, required: true },
+            dateToDate: { type: mealPricingSchema, required: true }, // per night
+      openStay:   { type: mealPricingSchema, required: true }, // daily rate
     },
 
 
@@ -92,6 +96,8 @@ const propertyRoomSchema = new Schema(
       oneNightPercent: { type: Number, default: 0, min: 0, max: 100 },
       threeHoursPercent: { type: Number, default: 0, min: 0, max: 100 },
       sixHoursPercent: { type: Number, default: 0, min: 0, max: 100 },
+            dateToDatePercent: { type: Number, default: 0, min: 0, max: 100 },
+      openStayPercent:   { type: Number, default: 0, min: 0, max: 100 },
     },
 
     promo: {

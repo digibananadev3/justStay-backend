@@ -1,5 +1,7 @@
 import mongoose from "mongoose";
 
+
+ 
 /* =========================
    Restaurant Schema
 ========================= */
@@ -8,178 +10,186 @@ const RestaurantSchema = new mongoose.Schema(
     name: {
       type: String,
       required: true,
-      trim: true
+      trim: true,
     },
     status: {
       type: String,
       enum: ["active", "inactive"],
-      default: "active"
+      default: "active",
     },
     location: {
       type: String,
       required: true,
-      trim: true
+      trim: true,
     },
     contactNumber: {
       type: String,
       required: true,
-      trim: true
+      trim: true,
     },
     email: {
       type: String,
       required: true,
-      trim: true
+      trim: true,
     },
   },
   {
-    timestamps: { createdAt: true, updatedAt: false }
+    timestamps: { createdAt: true, updatedAt: false },
   }
 );
-
+ 
 /* =========================
-   Food Schema (GLOBAL)
+   Food Schema
+   Owned by a Restaurant.
+   Each food item belongs to one restaurant and carries
+   its own price and images. No stock fields.
 ========================= */
+const FOOD_CATEGORIES = [
+  "starter",
+  "main_course",
+  "dessert",
+  "beverage",
+  "snack",
+  "breakfast",
+  "combo",
+  "other",
+];
+ 
+
 const FoodSchema = new mongoose.Schema(
   {
+    restaurantId: {
+      // Food is created by and belongs to a specific restaurant
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Restaurant",
+      required: true,
+    },
     title: {
       type: String,
       required: true,
-      trim: true
+      trim: true,
+    },
+    description: {
+      type: String,
+      trim: true,
+      default: "",
     },
     category: {
       type: String,
-      required: true
+      enum: FOOD_CATEGORIES,
+      required: true,
     },
     images: [
       {
         type: String, // image URL or file path
-        required: true
-      }
+        required: true,
+      },
     ],
-    totalStock: {
+    price: {
+      // Base price set by the restaurant when creating the food
       type: Number,
       required: true,
-      min: 0
-    }
+      min: 0,
+    },
+    isAvailable: {
+      // Restaurant can hide items without deleting them
+      type: Boolean,
+      default: true,
+    },
   },
   {
-    timestamps: true
+    timestamps: true,
   }
 );
+ 
+FoodSchema.index({ restaurantId: 1, isAvailable: 1 });
 
+
+
+ 
 /* =========================
    PropertyFood Schema
 ========================= */
-const PropertyFoodSchema = new mongoose.Schema(
-  {
-    propertyId:{
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "PropertyInfo",
-      required: true
-    },
-    restaurantId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Restaurant",
-      required: true
-    },
-    foodId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Food",
-      required: true
-    },
-    price: {
-      type: Number,
-      required: true,
-      min: 0
-    },
-    availableStock: {
-      type: Number,
-      required: true,
-      min: 0
-    },
-    usedStock: {
-      type: Number,
-      default: 0,
-      min: 0
-    }
-  },
-  {
-    timestamps: true
-  }
-);
-
-PropertyFoodSchema.index(
-  { restaurantId: 1, foodId: 1 },
-  { unique: true }
-);
-
-/* =========================
-   RoomFood Schema
-========================= */
-const RoomFoodSchema = new mongoose.Schema(
+const PropertyRoomFoodSchema = new mongoose.Schema(
   {
     propertyId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "PropertyInfo",
-      required: true
+      required: true,
     },
+
     roomId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "RoomBooking",
-      required: true
+      required: true,
     },
+
     restaurantId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Restaurant",
-      required: true
+      required: true,
     },
+
     foodId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Food",
-      required: true
+      required: true,
     },
-    quantity: {
+
+    basePrice: {
+      // snapshot from Food.price
       type: Number,
       required: true,
-      min: 1
     },
-    status: {
-      type: String,
-      enum: ["ordered", "served", "cancelled"],
-      default: "ordered"
-    }
+
+    extraPrice: {
+      // markup added per room/property
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    finalPrice: {
+      // basePrice + extraPrice
+      type: Number,
+      required: true,
+    },
+
+    isActive: {
+      type: Boolean,
+      default: true,
+    },
   },
-  {
-    timestamps: true
-  }
+  { timestamps: true }
 );
 
+// prevent duplicate assignment
+PropertyRoomFoodSchema.index(
+  { propertyId: 1, roomId: 1, foodId: 1 },
+  { unique: true }
+);
+
+// fast queries
+PropertyRoomFoodSchema.index({ propertyId: 1, roomId: 1, isActive: 1 });
+
+ 
 /* =========================
    MODELS
 ========================= */
 const Restaurant =
   mongoose.models.Restaurant ||
   mongoose.model("Restaurant", RestaurantSchema);
-
+ 
 const Food =
   mongoose.models.Food ||
   mongoose.model("Food", FoodSchema);
+ 
 
-const PropertyFood =
-  mongoose.models.PropertyFood ||
-  mongoose.model("PropertyFood", PropertyFoodSchema);
-
-const RoomFood =
-  mongoose.models.RoomFood ||
-  mongoose.model("RoomFood", RoomFoodSchema);
-
-
+const PropertyRoomFood =
+  mongoose.models.PropertyRoomFood ||
+  mongoose.model("PropertyRoomFood", PropertyRoomFoodSchema);
+ 
 /* =========================
    EXPORTS
 ========================= */
-export {
-  Restaurant,
-  Food,
-  PropertyFood,
-  RoomFood
-};
+export { Restaurant, Food, PropertyRoomFood, FOOD_CATEGORIES };

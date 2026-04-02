@@ -23,6 +23,8 @@ router.get("/:id", getRoomById);     // Get by ID
 router.delete("/:id", deleteRoom);   // Delete
 router.get("/property/:propertyId/availability", getPropertyRoomsAvailability); // Get availability for all rooms of a property on a specific date
 
+
+
 // Pricing & Promotions
 router.get("/:id/pricing", getRoomPricing);
 router.put("/:id/pricing", updateRoomPricing);

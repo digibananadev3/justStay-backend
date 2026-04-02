@@ -316,7 +316,6 @@ export const register = async (req, res) => {
 // ===============================
 export const login = async (req, res) => {
   try {
-    console.log("Welcome to the Login controller");
     const { email, phone, password } = req.body;
 
     // ===============================
@@ -450,7 +449,6 @@ export const resendOtp = async (req, res) => {
     }
 
     // 🔔 TODO: Integrate real SMS API here (Twilio, Fast2SMS, etc.)
-    console.log(`📱 OTP for ${phone}: ${otp}`);
 
     // res.status(200).json({ status: "success", message: "OTP sent successfully" });
     res.status(200).json({
@@ -497,11 +495,12 @@ export const verifyOtp = async (req, res) => {
     user.isVerified = true;
     await user.save();
 
-    //const token = generateToken(user._id, user.role);
+    const token = generateToken(user._id, user.role);
     res.status(200).json({
       data: {
         status: "success",
         message: "OTP verified successfully",
+        token: token,
         user: {
           id: user._id,
           firstName: user.firstName,
@@ -522,6 +521,8 @@ export const verifyOtp = async (req, res) => {
 export const googleLogin = async (req, res) => {
   try {
     const { token, role = "customer" } = req.body;
+
+    
 
     const payload = await verifyGoogleToken(token);
 

@@ -34,7 +34,6 @@ export const createChatSession = async (req, res) => {
 
 export const listChatSessions = async (req, res) => {
   try {
-    console.log("req.query", req.query);
     const { userId, status = "Open", page = 1, limit = 20 } = req.query;
 
     if (!userId) {
@@ -84,8 +83,6 @@ export const listChatSessions = async (req, res) => {
 export const sendChatMessage = async (req, res) => {
   try {
     const { id } = req.params; // sessionId
-    console.log("Sending message to session:", id);
-    console.log("req.body", req.body);
     const { userId, message, attachments } = req.body;
     if (!userId)
       return res

@@ -1,10 +1,11 @@
 import mongoose from "mongoose";
-import { Food, PropertyFood, Restaurant, RoomFood } from "../models/food.model.js";
+import { Food, PropertyRoomFood, Restaurant } from "../models/food.model.js";
+
 
 
 
 /* =========================
-   CREATE RESTAURANT
+   RESTAURANT — CREATE
 ========================= */
 export const createRestaurant = async (req, res) => {
   try {
@@ -13,7 +14,7 @@ export const createRestaurant = async (req, res) => {
     if (!name || !location || !contactNumber || !email) {
       return res.status(400).json({
         success: false,
-        message: "Name, location, contactNumber and email are required"
+        message: "Name, location, contactNumber and email are required",
       });
     }
 
@@ -22,26 +23,22 @@ export const createRestaurant = async (req, res) => {
       location,
       contactNumber,
       email,
-      status: status || "active"
+      status: status || "active",
     });
 
     return res.status(201).json({
       success: true,
       message: "Restaurant created successfully",
-      data: restaurant
+      data: restaurant,
     });
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: error.message
-    });
+    return res.status(500).json({ success: false, message: error.message });
   }
 };
 
 
-
 /* =========================
-   GET ALL RESTAURANTS
+   RESTAURANT — GET ALL
 ========================= */
 export const getAllRestaurants = async (req, res) => {
   try {
@@ -50,30 +47,59 @@ export const getAllRestaurants = async (req, res) => {
     return res.status(200).json({
       success: true,
       count: restaurants.length,
-      data: restaurants
+      data: restaurants,
     });
   } catch (error) {
-    return res.status(500).json({
-      success: false,
-      message: error.message
-    });
-  } 
+    return res.status(500).json({ success: false, message: error.message });
+  }
 };
 
 
 /* =========================
-   DELETE RESTAURANT
+   RESTAURANT — GET ONE
 ========================= */
-export const deleteRestaurant = async (req, res) => {
+export const getSpecificRestaurant = async (req, res) => {
   try {
-    const { id } = req.params;
-
-    const restaurant = await Restaurant.findById(id);
+    const restaurant = await Restaurant.findById(req.params.id);
 
     if (!restaurant) {
       return res.status(404).json({
         success: false,
-        message: "Restaurant not found"
+        message: "Restaurant not found",
+      });
+    }
+
+    return res.status(200).json({ success: true, data: restaurant });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+
+/* =========================
+   RESTAURANT — DELETE
+   Blocked if the restaurant has food assigned to any property
+========================= */
+export const deleteRestaurant = async (req, res) => {
+  try {
+    const restaurant = await Restaurant.findById(req.params.id);
+
+    if (!restaurant) {
+      return res.status(404).json({
+        success: false,
+        message: "Restaurant not found",
+      });
+    }
+
+    const hasAssignedFood = await PropertyFood.findOne({
+      restaurantId: req.params.id,
+    });
+
+    if (hasAssignedFood) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Restaurant has food assigned to properties. Remove those assignments before deleting.",
       });
     }
 
@@ -81,158 +107,194 @@ export const deleteRestaurant = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: "Restaurant deleted successfully"
+      message: "Restaurant deleted successfully",
     });
   } catch (error) {
-    return res.status(500).json({
-      success: false,
-      message: error.message
-    });
+    return res.status(500).json({ success: false, message: error.message });
   }
 };
 
 
 
-/* =========================
-   GET SPECIFIC RESTAURANT
-========================= */
-export const getSpecificRestaurant = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const restaurant = await Restaurant.findById(id);
-
-    if (!restaurant) {
-      return res.status(404).json({
-        success: false,
-        message: "Restaurant not found"
-      });
-    }
-
-    return res.status(200).json({
-      success: true,
-      data: restaurant
-    });
-  } catch (error) {
-    return res.status(500).json({
-      success: false,
-      message: error.message
-    });
-  }
-};
-
 
 
 /* =========================
-   CREATE FOOD (GLOBAL)
+   FOOD — CREATE
 ========================= */
 export const createFood = async (req, res) => {
   try {
-    const { title, category, totalStock, images } = req.body;
+    const { restaurantId } = req.params;
+    const { title, category, description, price, images, isAvailable } = req.body;
 
-    if (!title || !category || totalStock === undefined) {
+    if (!title || !category || price === undefined) {
       return res.status(400).json({
         success: false,
-        message: "Title, category and totalStock are required"
+        message: "Title, category and price are required",
       });
     }
 
-     if (!images || !Array.isArray(images) || images.length === 0) {
+    if (!images || !Array.isArray(images) || images.length === 0) {
       return res.status(400).json({
         success: false,
-        message: "At least one food image is required"
+        message: "At least one food image is required",
+      });
+    }
+
+    const restaurant = await Restaurant.findById(restaurantId);
+    if (!restaurant) {
+      return res.status(404).json({
+        success: false,
+        message: "Restaurant not found",
       });
     }
 
     const food = await Food.create({
+      restaurantId,
       title,
       category,
-      totalStock,
-      images 
+      description: description || "",
+      price,
+      images,
+      isAvailable: isAvailable !== undefined ? isAvailable : true,
     });
 
     return res.status(201).json({
       success: true,
       message: "Food created successfully",
-      data: food
+      data: food,
     });
   } catch (error) {
-    return res.status(500).json({
-      success: false,
-      message: error.message
-    });
+    return res.status(500).json({ success: false, message: error.message });
   }
 };
 
+
+
 /* =========================
-   GET ALL FOODS
+   GET ALL FOOD
 ========================= */
-export const getAllFoods = async (req, res) => {
+export const getAllFoods=async(req, res)=>{
   try {
-    const foods = await Food.find().sort({ createdAt: -1 });
+
+    const getAllFoods = await Food.find({isAvailable: true});
+
+    return res.status(200).json({
+      success: true,
+      message: "Get All Food successfully",
+      data: getAllFoods,
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+}
+
+/* =========================
+   FOOD — GET ALL FOR A RESTAURANT
+   GET /restaurants/:restaurantId/foods
+========================= */
+export const getFoodsByRestaurant = async (req, res) => {
+  try {
+    const { restaurantId } = req.params;
+
+    const restaurant = await Restaurant.findById(restaurantId);
+    if (!restaurant) {
+      return res.status(404).json({
+        success: false,
+        message: "Restaurant not found",
+      });
+    }
+
+    const foods = await Food.find({ restaurantId }).sort({ createdAt: -1 });
 
     return res.status(200).json({
       success: true,
       count: foods.length,
-      data: foods
+      data: foods,
     });
   } catch (error) {
-    return res.status(500).json({
-      success: false,
-      message: error.message
-    });
-  }
-};
-
-
-/* ==========================
-   GET FOOD BY ID
-========================= */
-export const getFoodById = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const food = await Food.findById(id);
-
-    if (!food) {
-      return res.status(404).json({
-        success: false,
-        message: "Food not found"
-      });
-    }
-
-    return res.status(200).json({
-      success: true,
-      data: food
-    });
-  } catch (error) {
-    return res.status(500).json({
-      success: false,
-      message: error.message
-    });
+    return res.status(500).json({ success: false, message: error.message });
   }
 };
 
 
 /* =========================
-   DELETE FOOD (SAFE)
+   FOOD — GET ONE
+========================= */
+export const getFoodById = async (req, res) => {
+  try {
+    const food = await Food.findById(req.params.id).populate(
+      "restaurantId",
+      "name location contactNumber"
+    );
+
+    if (!food) {
+      return res.status(404).json({ success: false, message: "Food not found" });
+    }
+
+    return res.status(200).json({ success: true, data: food });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+
+/* =========================
+   FOOD — UPDATE
+========================= */
+export const updateFood = async (req, res) => {
+  try {
+    const { title, description, category, price, images, isAvailable } = req.body;
+
+    const food = await Food.findById(req.params.id);
+    if (!food) {
+      return res.status(404).json({ success: false, message: "Food not found" });
+    }
+
+    if (title !== undefined) food.title = title;
+    if (description !== undefined) food.description = description;
+    if (category !== undefined) food.category = category;
+    if (price !== undefined) food.price = price;
+    if (images !== undefined) {
+      if (!Array.isArray(images) || images.length === 0) {
+        return res.status(400).json({
+          success: false,
+          message: "images must be a non-empty array",
+        });
+      }
+      food.images = images;
+    }
+    if (isAvailable !== undefined) food.isAvailable = isAvailable;
+
+    await food.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Food updated successfully",
+      data: food,
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+
+/* =========================
+   FOOD — DELETE
+   Blocked if the food is assigned to any property
 ========================= */
 export const deleteFood = async (req, res) => {
   try {
-    const { id } = req.params;
-
-    const food = await Food.findById(id);
+    const food = await Food.findById(req.params.id);
     if (!food) {
-      return res.status(404).json({
-        success: false,
-        message: "Food not found"
-      });
+      return res.status(404).json({ success: false, message: "Food not found" });
     }
 
-    // ❗ Prevent deleting food if allocated to any restaurant
-    const allocated = await PropertyFood.findOne({ foodId: id });
-    if (allocated) {
+    const assigned = await PropertyFood.findOne({ foodId: req.params.id });
+    if (assigned) {
       return res.status(400).json({
         success: false,
-        message: "Food is allocated to a restaurant and cannot be deleted"
+        message:
+          "Food is assigned to a property. Remove that assignment before deleting.",
       });
     }
 
@@ -240,312 +302,109 @@ export const deleteFood = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: "Food deleted successfully"
+      message: "Food deleted successfully",
     });
   } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+
+
+
+export const assignFoodToRoom = async (req, res) => {
+  try {
+    const { propertyId, roomId, foodId, extraPrice = 0 } = req.body;
+
+    if (!propertyId || !roomId || !foodId) {
+      return res.status(400).json({
+        success: false,
+        message: "propertyId, roomId and foodId are required",
+      });
+    }
+
+    // 1. Get food
+    const food = await Food.findById(foodId);
+
+    if (!food || !food.isAvailable) {
+      return res.status(404).json({
+        success: false,
+        message: "Food not available",
+      });
+    }
+
+    // 2. Calculate price
+    const basePrice = food.price;
+    const finalPrice = basePrice + extraPrice;
+
+    // 3. Create assignment
+    const assignment = await PropertyRoomFood.create({
+      propertyId,
+      roomId,
+      restaurantId: food.restaurantId,
+      foodId,
+      basePrice,
+      extraPrice,
+      finalPrice,
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: "Food assigned to room successfully",
+      data: assignment,
+    });
+  } catch (error) {
+    if (error.code === 11000) {
+      return res.status(400).json({
+        success: false,
+        message: "Food already assigned to this room",
+      });
+    }
+
     return res.status(500).json({
       success: false,
-      message: error.message
+      message: error.message,
     });
   }
 };
 
 
 
-
-// export const assignFood = async (req, res) => {
-//   const session = await mongoose.startSession();
-//   session.startTransaction();
-
-//   try {
-//     const { propertyId, restaurantId, foodId, availableStock, price } = req.body;
-
-//    if (!propertyId || !restaurantId || !foodId || availableStock <= 0 || price === undefined) {
-//       return res.status(400).json({ message: "All fields required" });
-//     }
-
-//     // 1️⃣ Reduce global stock
-//     const food = await Food.findOneAndUpdate(
-//       { _id: foodId, totalStock: { $gte: availableStock } },
-//       { $inc: { totalStock: -availableStock } },
-//       { new: true, session }
-//     );
-
-//     if (!food) {
-//       await session.abortTransaction();
-//       return res.status(400).json({ message: "Not enough global stock" });
-//     }
-
-//     // 2️⃣ Assign to restaurant
-//     const stock = await PropertyFood.create(
-//       [
-//         {
-//           propertyId,
-//           restaurantId,
-//           foodId,
-//           availableStock,
-//           price
-//         }
-//       ],
-//       { session }
-//     );
-
-//     await session.commitTransaction();
-//     session.endSession();
-
-//     res.status(201).json(stock[0]);
-//   } catch (err) {
-//     await session.abortTransaction();
-//     session.endSession();
-
-//     if (err.code === 11000) {
-//       return res.status(400).json({ message: "Food already assigned" });
-//     }
-
-//     res.status(500).json({ message: err.message });
-//   }
-// };
-export const assignFood = async (req, res) => {
-  const { propertyId, restaurantId, foodId, availableStock, price } = req.body;
-
-  if (!propertyId || !restaurantId || !foodId || availableStock <= 0 || price === undefined) {
-    return res.status(400).json({ message: "All fields required" });
-  }
-
-  const session = await mongoose.startSession();
-  session.startTransaction();
-
+export const getSpecificRoomOrders = async (req, res) => {
   try {
-    const food = await Food.findOneAndUpdate(
-      { _id: foodId, totalStock: { $gte: availableStock } },
-      { $inc: { totalStock: -availableStock } },
-      { new: true, session }
-    );
+    const { roomId } = req.params;
 
-    if (!food) {
-      await session.abortTransaction();
-      session.endSession();
-      return res.status(400).json({ message: "Not enough global stock" });
+    if (!roomId) {
+      return res.status(400).json({
+        success: false,
+        message: "roomId is required",
+      });
     }
 
-    const stock = await PropertyFood.create(
-      [
-        { propertyId, restaurantId, foodId, availableStock, price }
-      ],
-      { session }
-    );
-
-    await session.commitTransaction();
-    session.endSession();
-
-    res.status(201).json({success: true, data : stock[0]});
-  } catch (err) {
-    await session.abortTransaction();
-    session.endSession();
-
-    if (err.code === 11000) {
-      return res.status(400).json({ message: "Food already assigned" });
-    }
-
-    res.status(500).json({ message: err.message });
-  }
-};
-
-
-
-export const getSpecificPropertyFood = async (req, res) => {
-  try{
-    const { id } = req.params;
-    const propertyFood = await PropertyFood.find({ propertyId: id })
-    .populate({
-        path: "propertyId",
-        select: "basicPropertyDetails.name location.area location.city"
+    const orders = await PropertyRoomFood.find({ roomId })
+      .populate({
+        path: "foodId",
+        select: "title description category images",
       })
       .populate({
         path: "restaurantId",
-        select: "name location contactNumber"
+        select: "name location contactNumber",
       })
-      .populate({
-        path: "foodId",
-        select: "title category images"
-      });
-    if (!propertyFood) {
-      return res.status(404).json({
-        success: false,
-        message: "PropertyFood not found"
-      });
-    }
+      // .populate({
+      //   path: "propertyRoomFoodId",
+      //   select: "finalPrice",
+      // })
+      .sort({ createdAt: -1 });
+
     return res.status(200).json({
       success: true,
-      data: propertyFood
+      count: orders.length,
+      data: orders,
     });
   } catch (error) {
     return res.status(500).json({
       success: false,
-      message: error.message
+      message: error.message,
     });
   }
 };
-
-
-export const getRestaurantStock = async (req, res) => {
-  const data = await PropertyFood.find({ restaurantId: req.params.restaurantId })
-    .populate("foodId");
-  res.json(data);
-};
-
-
-// export const getSpecificPropertyFood = async (req, res) => {
-//   try{
-//     const { id } = req.params;
-//     const propertyFood = await PropertyFood.findById(id).populate("foodId");
-
-//     if (!propertyFood) {
-//       return res.status(404).json({
-//         success: false,
-//         message: "PropertyFood not found"
-//       });
-//     }
-//     return res.status(200).json({
-//       success: true,
-//       data: propertyFood
-//     });
-
-//   } catch (error) {
-//     return res.status(500).json({
-//       success: false,
-//       message: error.message
-//     });
-//   }
-// };
-
-export const updateStock = async (req, res) => {
-
-  if (req.body.availableStock < 0) {
-  return res.status(400).json({ message: "Stock cannot be negative" });
-}
-
-
-  const stock = await PropertyFood.findOneAndUpdate(
-    {
-      _id: req.params.id,
-      availableStock: { $gte: 0 }
-    },
-    req.body,
-    { new: true }
-  );
-
-  if (!stock) {
-    return res.status(400).json({ message: "Invalid stock update" });
-  }
-
-  res.json(stock);
-};
-
-
-/* =========================
-  REMOVE FOOD FROM RESTAURANT & RESTORE STOCK
-========================= */
-export const removeFood = async (req, res) => {
-  const session = await mongoose.startSession();
-  session.startTransaction();
-
-  try {
-    const item = await PropertyFood.findById(req.params.id).session(session);
-    if (!item) return res.status(404).json({ message: "Not found" });
-
-    // Restore global stock
-    await Food.findByIdAndUpdate(
-      item.foodId,
-      { $inc: { totalStock: item.availableStock } },
-      { session }
-    );
-
-    await item.deleteOne({ session });
-
-    await session.commitTransaction();
-    session.endSession();
-
-    res.json({ message: "Removed & stock restored" });
-  } catch (err) {
-    await session.abortTransaction();
-    session.endSession();
-    res.status(500).json({ message: err.message });
-  }
-};
-
-
-
-
-// Create Room Food Order
-export const createRoomFoodOrder = async (req, res) => {
-  const { roomId, propertyId, restaurantId, foodId, quantity } = req.body;
-
-  if (!roomId || !propertyId || !restaurantId || !foodId || !quantity) {
-    return res.status(400).json({ message: "All fields are required" });
-  }
-
-  const session = await mongoose.startSession();
-  session.startTransaction();
-
-  try {
-    const stock = await PropertyFood.findOneAndUpdate(
-      {
-        propertyId,
-        restaurantId,
-        foodId,
-        availableStock: { $gte: quantity }
-      },
-      { $inc: { availableStock: -quantity, usedStock: quantity } },
-      { new: true, session }
-    );
-
-    if (!stock) {
-      await session.abortTransaction();
-      session.endSession();
-      return res.status(400).json({ message: "Not enough stock" });
-    }
-
-    const order = await RoomFood.create(
-      [
-        { roomId, propertyId, restaurantId, foodId, quantity }
-      ],
-      { session }
-    );
-
-    await session.commitTransaction();
-    session.endSession();
-
-    res.status(201).json({
-      success: true,
-      message: "Food ordered successfully",
-      data: order[0]
-    });
-  } catch (err) {
-    await session.abortTransaction();
-    session.endSession();
-    res.status(500).json({ message: err.message });
-  }
-};
-
-
-
-
-
-
-// export const createRoomFoodOrder = async (req, res) => {
-//   try {
-//     const { roomBookingId, restaurantId, foodId, quantity } = req.body;
-//     if (!roomBookingId || !restaurantId || !foodId || !quantity) {
-//       return res.status(400).json({
-//         success: false,
-//         message: "roomBookingId, restaurantId, foodId and quantity are required"
-//       });
-//     }
-//     const roomFoodOrder = await RoomFood.create({
-//       roomBookingId,
-//       restaurantId,
-//       foodId,
-//       quantity
-//     });
-

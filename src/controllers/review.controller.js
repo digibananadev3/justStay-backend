@@ -2,6 +2,7 @@ import mongoose from "mongoose";
 import Review from "../models/review.model.js";
 import User from "../models/user.model.js";
 import { updatePropertyRating } from "./property.controller.js";
+import PropertyInfo from "../models/property.model.js";
 
 export const createReview = async (req, res) => {
   try {
@@ -64,8 +65,6 @@ export const createReview = async (req, res) => {
     // if(!bookingId) {
     //   return res.status(400).json({ success: false, message: "bookingId is required" });
     // }
-
-    console.log("This is the value of overall rating: ", overall);
 
     const review = await Review.create({
       userId,
@@ -203,12 +202,9 @@ export const replyToReview = async (req, res) => {
   }
 };
 
-
 export const overallReview = async (req, res) => {
   try {
-    console.log("Welcome to the overallReview controller"); 
     const { propertyId, page = 1, limit = 10 } = req.query;
-    console.log("Received propertyId:", propertyId);
 
     if (!propertyId || !mongoose.Types.ObjectId.isValid(propertyId)) {
       return res.status(400).json({
@@ -304,8 +300,6 @@ export const overallReview = async (req, res) => {
   }
 };
 
-
-
 export const deleteReview = async (req, res) => {
   try {
     const { id } = req.params;
@@ -339,6 +333,91 @@ export const deleteReview = async (req, res) => {
     res
       .status(500)
       .json({ success: false, message: "Server error", error: error.message });
+  }
+};
+
+
+
+export const getPropertyAllGuestReview = async (req, res) => {
+  try {
+    const { propertyId } = req.params;
+    const { page = 1, limit = 20 } = req.query;
+
+    if (!mongoose.Types.ObjectId.isValid(propertyId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid propertyId",
+      });
+    }
+
+    const pageNum = Number(page);
+    const limitNum = Number(limit);
+    const skip = (pageNum - 1) * limitNum;
+
+    // ✅ Fetch paginated reviews
+    const [reviews, totalReviews, avgData] = await Promise.all([
+      Review.find({ propertyId, isPublished: true })
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limitNum)
+        .lean(),
+
+      Review.countDocuments({ propertyId, isPublished: true }),
+
+      // ✅ Aggregation for averages
+      Review.aggregate([
+        {
+          $match: {
+            propertyId: new mongoose.Types.ObjectId(propertyId),
+            isPublished: true,
+          },
+        },
+        {
+          $group: {
+            _id: "$propertyId",
+
+            avgRating: { $avg: "$rating" },
+
+            avgCleanliness: { $avg: "$ratings.cleanliness" },
+            avgLocation: { $avg: "$ratings.location" },
+            avgStaff: { $avg: "$ratings.staffBehaviour" },
+            avgValue: { $avg: "$ratings.valueForMoney" },
+          },
+        },
+      ]),
+    ]);
+
+    const averages = avgData[0] || {};
+
+    return res.status(200).json({
+      success: true,
+      message: "Get Guest Reviews Successfully",
+
+      page: pageNum,
+      limit: limitNum,
+      totalReviews,
+      totalPages: Math.ceil(totalReviews / limitNum),
+
+      // ✅ Overall rating
+      averageRating: Number(averages.avgRating || 0).toFixed(1),
+
+      // ✅ Category averages
+      averageRatings: {
+        cleanliness: Number(averages.avgCleanliness || 0).toFixed(1),
+        location: Number(averages.avgLocation || 0).toFixed(1),
+        staffBehaviour: Number(averages.avgStaff || 0).toFixed(1),
+        valueForMoney: Number(averages.avgValue || 0).toFixed(1),
+      },
+
+      data: reviews,
+    });
+  } catch (error) {
+    console.error("Review Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Server error",
+      error: error.message,
+    });
   }
 };
 
@@ -402,3 +481,5 @@ export const getPropertyGuestPhotos = async (req, res) => {
     });
   }
 };
+
+//
