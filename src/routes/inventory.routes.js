@@ -8,6 +8,7 @@ import {
   bulkInventory,
   toggleOpenClose,
   saveBulkChanges,
+  getBlockedSlotsOfDay,
 } from "../controllers/inventory.controller.js";
 
 const router = express.Router();
@@ -19,6 +20,11 @@ const router = express.Router();
 // with inventory state and quick rate snapshot so the calendar can render badges like
 // "Non Sel." and base prices.
 router.get("/calendar", getInventoryCalendar);
+
+
+
+router.get("/getBookedSlots", getBlockedSlotsOfDay);
+
 
 // GET /day/:roomId/:date
 // Purpose: Read a single day's complete inventory + rate plans + restrictions for a room.
@@ -71,6 +77,7 @@ router.post("/save", saveBulkChanges);
   "rates": []
 }
 */
+
 
 
 

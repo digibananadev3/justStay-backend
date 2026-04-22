@@ -1,6 +1,7 @@
 import mongoose from "mongoose";
-
 const { Schema } = mongoose;
+
+
 
 // -----------------------------------------
 // ENUMS
@@ -10,10 +11,11 @@ const bookingStatuses = ["Booked", "CheckIn", "CheckOut", "Cancel"];
 const paymentStatuses = ["pending", "paid", "failed", "refunded", "partial"];
 const bookingSources = ["JustStay App", "Website", "Booking.com", "Expedia", "OTA"];
 
+
+
 // -----------------------------------------
 // SUB-SCHEMAS
 // -----------------------------------------
-
 const guestDetailsSchema = new Schema({
   name: { type: String, required: true },
   fatherOrSpouseName: { type: String },
@@ -27,23 +29,15 @@ const guestDetailsSchema = new Schema({
   email: { type: String },
 });
 
+
+
 const identificationProofSchema = new Schema({
   type: { type: String },
   number: { type: String },
   documentUrl: { type: String },
 });
 
-const stayDetailsSchema = new Schema({
-  roomNumber: { type: String },
-  roomType: { type: String },
-  adults: { type: Number, default: 1 },
-  children: { type: Number, default: 0 },
-  checkInDate: { type: Date },
-  checkInTime: { type: String },
-  expectedCheckOutDate: { type: Date },
-  expectedCheckOutTime: { type: String },
-  purposeOfVisit: { type: String },
-});
+
 
 const coGuestDetailsSchema = new Schema({
   name: { type: String },
@@ -52,10 +46,12 @@ const coGuestDetailsSchema = new Schema({
   idUrl: { type: String },
 });
 
+
 const foodSchema = new Schema({
   name: { type: String },
   quantity: { type: Number, default: 1 },
 });
+
 
 const priceSummarySchema = new Schema({
   roomPrice: { type: Number, default: 0 },
@@ -64,22 +60,60 @@ const priceSummarySchema = new Schema({
   discount: { type: Number, default: 0 },
   platformFee: { type: Number, default: 0 },
   totalAmount: { type: Number, default: 0 },
+  // agreedDailyRate: { type: Number, default: 0 },
 });
 
-const refundSchema = new Schema({
-  status: { type: String, enum: ["none", "requested", "approved", "processed", "rejected"], default: "none" },
-  amount: { type: Number, default: 0 },
-  reason: { type: String },
-  processedAt: { type: Date }
-}, { _id: false });
+const refundSchema = new Schema(
+  {
+    status: {
+      type: String,
+      enum: ["none", "requested", "approved", "processed", "rejected"],
+      default: "none",
+    },
+    amount: { type: Number, default: 0 },
+    reason: { type: String },
+    processedAt: { type: Date },
+  },{ _id: false },
+);
 
-const disputeSchema = new Schema({
-  status: { type: String, enum: ["none", "open", "resolved", "rejected"], default: "none" },
-  reason: { type: String },
-  notes: { type: String },
-  openedAt: { type: Date },
-  resolvedAt: { type: Date }
-}, { _id: false });
+const disputeSchema = new Schema(
+  {
+    status: {
+      type: String,
+      enum: ["none", "open", "resolved", "rejected"],
+      default: "none",
+    },
+    reason: { type: String },
+    notes: { type: String },
+    openedAt: { type: Date },
+    resolvedAt: { type: Date },
+  },
+  { _id: false },
+);
+
+
+// -----------------------------------------
+// STAY DETAILS — covers all 5 plan types
+// -----------------------------------------
+const stayDetailsSchema = new Schema({
+  roomNumber: { type: String },
+  roomType: { type: String },
+  adults: { type: Number, default: 1 },
+  children: { type: Number, default: 0 },
+  purposeOfVisit: { type: String },
+
+  // Check-in (all plans)
+  checkInDate: { type: Date },
+  checkInTime: { type: String },    // "14:00"
+
+  // -- 3hr / 6hr slots --
+  slotEndTime: { type: String },           // "17:00" — auto-calculated from checkInTime + plan
+
+  nightCheckOutTime: { type: String },     // "11:00"
+  
+  expectedCheckOutDate: { type: Date },
+  expectedCheckOutTime: { type: String },
+});
 
 // -----------------------------------------
 // MAIN SCHEMA
@@ -87,8 +121,7 @@ const disputeSchema = new Schema({
 const roomBookingSchema = new Schema(
   {
     bookingCode: { type: String, trim: true },
-    //online =customer books via website
-    //manual= Hotelire does the booking for customer
+
     userId: {
       type: Schema.Types.ObjectId,
       ref: "User",
@@ -99,7 +132,23 @@ const roomBookingSchema = new Schema(
       ref: "PropertyInfo",
       required: true,
     },
-    type: {
+
+    //  Updated
+    roomId: {
+      type: Schema.Types.ObjectId,
+      ref: "PropertyRoom",
+      required: true,
+    },
+
+    // ---- PLAN (drives all logic) ----
+    // 3hr        → slot booking, slotEndTime auto-set
+    // 6hr        → slot booking, slotEndTime auto-set
+    // night      → checks out next morning at nightCheckOutTime
+    // date-to-date → expectedCheckOutDate required
+    // open-stay  → no checkout date, room locked until actual checkout
+    plan: { type: String, enum: ["3hr", "6hr", "night", "date-to-date", "open-stay"], required: true },
+
+        type: {
       type: String,
       enum: bookingTypes,
       required: true,
@@ -107,8 +156,12 @@ const roomBookingSchema = new Schema(
     },
 
     source: { type: String, enum: bookingSources, default: "JustStay App" },
-    paymentStatus: { type: String, enum: paymentStatuses, default: "pending" },
-    isHourly: { type: Boolean, default: false },
+
+    mealPlan: {
+      type: String,
+      enum: ["roomOnly", "withBreakfast"],
+      required: true,
+    },
 
     status: {
       type: String,
@@ -117,36 +170,59 @@ const roomBookingSchema = new Schema(
       default: "Booked",
     },
 
+    paymentStatus: { type: String, enum: paymentStatuses, default: "pending" },
+
+        // ADD COUPON
+    coupon: {
+      code: { type: String },
+      discountAmount: { type: Number, default: 0 },
+    },
+
+     // Only used when plan = "open-stay" — rate locked at check-in
+    agreedDailyRate: { type: Number, default: 0 },
+
+    isHourly: { type: Boolean, default: false },
+
+    // true only for open-stay
+    isOpenStay: { type: Boolean, default: false },
+
+
+
+
+
+
+    rewardProcessed: {
+      type: Boolean,
+      default: false,
+    },
+
     guestDetails: guestDetailsSchema,
-
     identificationProof: identificationProofSchema,
-
     stayDetails: stayDetailsSchema,
-
     coGuestDetails: [coGuestDetailsSchema],
 
-    checkOutDate: { type: Date },
-    time: { type: String },
     actualCheckInAt: { type: Date },
     actualCheckOutAt: { type: Date },
-
+    
     food: [foodSchema],
-
     priceSummary: priceSummarySchema,
-
+    
     refund: refundSchema,
     dispute: disputeSchema,
 
+    // checkOutDate: { type: Date },
+    // time: { type: String },
+
     paymentInfo: {
       method: { type: String, trim: true },
-      transactionId: { type: String, trim: true }
+      transactionId: { type: String, trim: true },
     },
-    adminNotes: { type: String, trim: true, default: '' },
-    specialRequests: { type: String, trim: true, default: '' },
+    adminNotes: { type: String, trim: true, default: "" },
+    specialRequests: { type: String, trim: true, default: "" },
     voucherUrl: { type: String, trim: true },
     confirmationSentAt: { type: Date },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 // -----------------------------------------

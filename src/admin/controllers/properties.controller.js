@@ -77,7 +77,7 @@ export const getPropertyReviewsSummary = async (req, res) => {
     return res.status(200).json({
       success: true,
       data: {
-        cards: { totalReviews: total, averageRating: avgRating, responseRate },
+        cards: { guestTotalReviews: total, guestAverageRating: avgRating, responseRate },
         recentReviews: recent,
       },
     });
@@ -350,11 +350,13 @@ export const addPropertyDocuments = async (req, res) => {
       expiresAt: d.expiresAt,
     }));
 
+
     const updated = await Property.findByIdAndUpdate(
       propertyId,
       { $push: { documents: { $each: docs } } },
       { new: true, runValidators: true }
     ).select("documents");
+
 
     if (!updated)
       return res
@@ -371,28 +373,61 @@ export const addPropertyDocuments = async (req, res) => {
 export const updatePropertyDocument = async (req, res) => {
   try {
     const { propertyId, documentId } = req.params;
-    const { name, documentType, documentUrl, status, expiresAt } = req.body;
+    const { name, documentType, documentUrl, status, expiresAt, remark } = req.body;
+
+
+    // console.log("This is the value of the body of the updatePropertyDocument", req.body);
 
     const property = await Property.findById(propertyId);
     if (!property)
-      return res
-        .status(404)
-        .json({ success: false, message: "Property not found" });
+      return res.status(404).json({ success: false, message: "Property not found" });
 
     const doc = property.documents.id(documentId);
+
+    // console.log("This is the value of the doc of the updatePropertyDocument", doc);
     if (!doc)
-      return res
-        .status(404)
-        .json({ success: false, message: "Document not found" });
+      return res.status(404).json({ success: false, message: "Document not found" });
+
 
     if (name !== undefined) doc.name = name;
     if (documentType !== undefined) doc.documentType = documentType;
     if (documentUrl !== undefined) doc.documentUrl = documentUrl;
-    if (status !== undefined) doc.status = status;
+    // if (status !== undefined) doc.status = status;
     if (expiresAt !== undefined) doc.expiresAt = expiresAt;
 
+    if (status !== undefined) {
+
+      // Pending → clear remark
+      if (status === "Pending") {
+        doc.status = "Pending";
+        doc.remark = "";
+      }
+
+      // Verified or Rejected → require remark
+      if (status === "Verified" || status === "Rejected") {
+        if (!remark || remark.trim() === "") {
+          return res.status(400).json({
+            success: false,
+            message: `Remark is required when status is ${status}`
+          });
+        }
+
+        doc.status = status;
+        doc.remark = remark;
+      }
+    }
+
+    
+     // Allow updating remark ONLY if document already Verified or Rejected
+    if (
+      remark !== undefined &&
+      (doc.status === "Verified" || doc.status === "Rejected")
+    ) {
+      doc.remark = remark.trim();
+    }
+
     await property.save();
-    res.status(200).json({ success: true, data: property.documents });
+    res.status(200).json({ success: true, data: property.documents, message: "Document updated successfully" });
   } catch (error) {
     console.error("Error in updatePropertyDocument:", error);
     return handleError(res, error, "Error updating document");
@@ -456,7 +491,8 @@ export const deletePropertyDocument = async (req, res) => {
 export const getPropertyMediaSummary = async (req, res) => {
   try {
     const { propertyId } = req.params;
-    const property = await Property.findById(propertyId)
+    // const property = await Property.findById(propertyId)
+    const property = await Property.findOne({ _id: propertyId, isDeleted: false })
       .select("photos videos")
       .lean();
     if (!property) {
@@ -490,6 +526,7 @@ export const addPropertyMediaPhotos = async (req, res) => {
   try {
     const { propertyId } = req.params;
     const { photos = [] } = req.body;
+
     if (!Array.isArray(photos) || photos.length === 0) {
       return res
         .status(400)
@@ -663,13 +700,30 @@ export const getAllProperties = async (req, res) => {
       sortOrder = "desc",
     } = req.query;
 
-    const query = {};
+    // const query = {};
+    const query = { isDeleted: false };
 
     // Build query
     if (search) {
       const orConditions = [
+        // Hotel / Property Name
         { "basicPropertyDetails.name": { $regex: search, $options: "i" } },
+
+        { "location.state": { $regex: search, $options: "i" }  },
+
+        // City
+        { "location.city": { $regex: search, $options: "i" }  },
+
+        // Area
+        { "location.area": { $regex: search, $options: "i" }  },
+
+        // Landmark
+         { "location.landmarks": { $regex: search, $options: "i" } },
+
+        // Email
         { "contactDetails.email": { $regex: search, $options: "i" } },
+
+        // Mobile
         { "contactDetails.mobile": { $regex: String(search), $options: "i" } },
       ];
 
@@ -772,7 +826,9 @@ export const exportProperties = async (req, res) => {
       sortOrder = "desc",
     } = req.query;
 
-    const query = {};
+    // const query = {};
+    const query = { isDeleted: false };
+
 
     if (search) {
       const orConditions = [
@@ -939,11 +995,12 @@ export const updateProperty = async (req, res) => {
 };
 
 // Delete property by ID
+
+
 export const deleteProperty = async (req, res) => {
   try {
     const { id } = req.params;
 
-    // Validate Mongo ID
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({
         success: false,
@@ -951,19 +1008,25 @@ export const deleteProperty = async (req, res) => {
       });
     }
 
-    const deletedProperty = await Property.findByIdAndDelete(id);
+    const property = await Property.findById(id);
 
-    if (!deletedProperty) {
+    if (!property) {
       return res.status(404).json({
         success: false,
         message: "Property not found",
       });
     }
 
+    // ---- SOFT DELETE ----
+    property.isDeleted = true;
+    property.deletedAt = new Date();
+    await property.save();
+
     return res.status(200).json({
       success: true,
-      message: "Property deleted successfully",
+      message: "Property deleted successfully (soft delete)",
     });
+
   } catch (error) {
     console.error("Error in deleteProperty:", error);
     return handleError(res, error, "Failed to delete property");
@@ -971,10 +1034,10 @@ export const deleteProperty = async (req, res) => {
 };
 
 
+
 // Add amenities to a property
 export const addPropertyAmenities = async (req, res) => {
   try {
-    console.log("Welcome to the add property amenties controller");
     const { propertyId } = req.params;
     const { amenities } = req.body;
 
@@ -1042,7 +1105,6 @@ export const addPropertyAmenities = async (req, res) => {
 // Remove amenities from a property
 export const removePropertyAmenities = async (req, res) => {
   try {
-    console.log("Welcome to remove property amenities controller");
 
     const { propertyId } = req.params;
     const { amenities } = req.body; // array of amenity names
@@ -1118,7 +1180,7 @@ export const getFeaturedProperties = async (req, res) => {
     if (amenities) {
       featured = await getPropertiesByAmenities(amenities, parseInt(limit));
     } else {
-      featured = await Property.find({ isFeatured: true })
+      featured = await Property.find({ isFeatured: true, isDeleted: false })
         .limit(parseInt(limit))
         .populate("userId", "firstName lastName")
         .lean();
@@ -1170,29 +1232,38 @@ export const getPropertyStats = async (req, res) => {
       recentProperties,
     ] = await Promise.all([
       // Total properties count
-      Property.countDocuments(),
+      // Property.countDocuments(),
+            Property.countDocuments({ isDeleted: false }),
 
       // Properties grouped by status
-      Property.aggregate([
+      // Property.aggregate([
+      //   { $group: { _id: "$status", count: { $sum: 1 } } },
+      //   { $sort: { count: -1 } },
+      // ]),
+
+        Property.aggregate([
+        { $match: { isDeleted: false } },
         { $group: { _id: "$status", count: { $sum: 1 } } },
         { $sort: { count: -1 } },
       ]),
 
       // Properties grouped by type
       Property.aggregate([
+        { $match: { isDeleted: false } },
         { $group: { _id: "$propertyType", count: { $sum: 1 } } },
         { $sort: { count: -1 } },
       ]),
 
       // Properties grouped by city (top 5)
       Property.aggregate([
+        { $match: { isDeleted: false } },
         { $group: { _id: "$location.city", count: { $sum: 1 } } },
         { $sort: { count: -1 } },
         { $limit: 5 },
       ]),
 
       // Recent properties
-      Property.find()
+      Property.find({ isDeleted: false })
         .sort({ createdAt: -1 })
         .limit(5)
         .select("basicPropertyDetails.name location.city status createdAt")
@@ -1229,7 +1300,7 @@ export const getPropertyStats = async (req, res) => {
 
     // Fallback to dummy data if no stats found
     if (totalProperties === 0) {
-      console.log("Using dummy statistics data");
+      ("Using dummy statistics data");
       // Add dummy data fallback here if needed
     }
 
@@ -1247,10 +1318,16 @@ export const getPropertyStats = async (req, res) => {
 export const getPropertyById = async (req, res) => {
   try {
     const { id } = req.params;
-    const property = await Property.findById(id).populate(
+    // const property = await Property.findById(id).populate(
+    //   "userId",
+    //   "firstName lastName"
+    // );
+
+        const property = await Property.findOne({ _id: id, isDeleted: false }).populate(
       "userId",
       "firstName lastName"
     );
+    
     const propertyRoom = await PropertyRoom.find({ propertyId: id });
     if (!property) {
       return res

@@ -67,7 +67,7 @@ const offerSchema = new mongoose.Schema({
   },
   properties: [{
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'Property'
+    ref: 'PropertyInfo'
   }],
   tags: [{
     type: String,

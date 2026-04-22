@@ -626,8 +626,8 @@ export const getGuestReviewsSummary = async (req, res) => {
       {
         $group: {
           _id: null,
-          totalReviews: { $sum: 1 },
-          averageRating: { $avg: "$rating" },
+          guestTotalReviews: { $sum: 1 },
+          guestAverageRating: { $avg: "$rating" },
           ratingDistribution: {
             $push: {
               rating: "$rating",
@@ -641,8 +641,8 @@ export const getGuestReviewsSummary = async (req, res) => {
       {
         $project: {
           _id: 0,
-          totalReviews: 1,
-          averageRating: { $round: ["$averageRating", 1] },
+          guestTotalReviews: 1,
+          guestAverageRating: { $round: ["$guestAverageRating", 1] },
           ratingDistribution: {
             $arrayToObject: {
               $map: {
@@ -678,8 +678,8 @@ export const getGuestReviewsSummary = async (req, res) => {
 
     // Prepare response
     const response = reviewStats[0] || {
-      totalReviews: 0,
-      averageRating: 0,
+      guestTotalReviews: 0,
+      guestAverageRating: 0,
       ratingDistribution: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 },
       totalProperties: 0
     };
@@ -699,10 +699,10 @@ export const getGuestReviewsSummary = async (req, res) => {
     }
 
     // If no reviews, return demo data
-    if (response.totalReviews === 0) {
+    if (response.guestTotalReviews === 0) {
       response.demo = true;
-      response.totalReviews = 12;
-      response.averageRating = 4.3;
+      response.guestTotalReviews = 12;
+      response.guestAverageRating = 4.3;
       response.ratingDistribution = { 1: 0, 2: 1, 3: 2, 4: 5, 5: 4 };
       response.totalProperties = 8;
       response.mostRecentReview = {
@@ -901,7 +901,7 @@ export const listGuests = async (req, res) => {
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(Number(limit))
-        .select("firstName lastName phone role isVerified status createdAt"),
+        .select("firstName lastName phone city kycStatus wallet email role isVerified status createdAt"),
       User.countDocuments(filter),
     ]);
 

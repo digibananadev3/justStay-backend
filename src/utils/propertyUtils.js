@@ -10,15 +10,15 @@ export const calculatePropertyRatings = async (propertyIds) => {
       { 
         $group: {
           _id: '$propertyId',
-          averageRating: { $avg: '$rating' },
+          guestAverageRating: { $avg: '$rating' },
           totalRatings: { $sum: 1 }
         }
       }
     ]);
     
-    return ratings.reduce((acc, { _id, averageRating, totalRatings }) => {
+    return ratings.reduce((acc, { _id, guestAverageRating, totalRatings }) => {
       acc[_id.toString()] = {
-        rating: parseFloat(averageRating.toFixed(1)),
+        rating: parseFloat(guestAverageRating.toFixed(1)),
         totalRatings
       };
       return acc;

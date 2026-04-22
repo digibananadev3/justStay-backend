@@ -1,6 +1,6 @@
 import express from 'express';
 import { body, param, query } from 'express-validator';
-import { listAmenities, seedRoomAmenities, createAmenity, updateAmenity, deleteAmenity  } from '../controllers/amenities.controller.js';
+import { listAmenities, seedRoomAmenities, createAmenity, updateAmenity, deleteAmenity, fetchAmenitiesStats  } from '../controllers/amenities.controller.js';
 
 const router = express.Router();
 
@@ -58,6 +58,8 @@ router.get(
   listAmenities
 );
 
+
+router.get("/get-ammenities-stats", fetchAmenitiesStats);
 
 
 

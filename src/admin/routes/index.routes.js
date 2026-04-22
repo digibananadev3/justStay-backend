@@ -8,6 +8,7 @@ import verificationRoutes from "./verification.routes.js";
 import bookingManagerRoutes from "./bookingManager.routes.js";
 import amenitiesRoutes from "./amenities.routes.js";
 import roomTypesRoutes from "./roomTypes.routes.js";
+import offerRoutes from "./offer.routes.js";
 
 const router = express.Router();
 
@@ -26,6 +27,7 @@ router.use('/verification', verificationRoutes);
 router.use('/bookings', bookingManagerRoutes);
 router.use('/amenities', amenitiesRoutes);
 router.use('/room-types', roomTypesRoutes);
+router.use('/offers', offerRoutes);
 
 
 export default router;

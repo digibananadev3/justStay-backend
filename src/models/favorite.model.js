@@ -12,7 +12,7 @@ const favoriteSchema = new Schema(
     },
     propertyId: { 
       type: Schema.Types.ObjectId, 
-      ref: "Property", 
+      ref: "PropertyInfo", 
       required: true,
       index: true 
     },

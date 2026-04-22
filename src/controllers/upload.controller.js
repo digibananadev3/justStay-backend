@@ -6,12 +6,23 @@ export const uploadFiles = async (req, res) => {
 
     const type = req.body.type || "photo";
 
+      // Decide folder based on type
+    const folder =
+      type === "document" ? "documents" : "photos";
+
     // Generate URLs (you can replace this with S3 or Cloudinary URLs later)
-    const urls = req.files.map((file) => ({
+    // const urls = req.files.map((file) => ({
+    //   type,
+    //   key: file.fieldname,
+    //   url: `${req.protocol}:/${req.get("host")}/${file.path}`,
+    // }));
+
+     const urls = req.files.map((file) => ({
       type,
       key: file.fieldname,
-      url: `${req.protocol}://${req.get("host")}/${file.path}`,
+      url: `${req.protocol}://${req.get("host")}/uploads/${folder}/${file.filename}`,
     }));
+
 
     res.status(200).json({
       message: `${req.files.length} ${type}(s) uploaded successfully`,
