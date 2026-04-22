@@ -41,11 +41,22 @@ const propertySchema = new Schema(
       //enum: propertyTypes,
       required: true,
     },
-    stayType: {
+    // stayType: {
+    //   type: [String],
+    //   enum: ["Family", "Couple", "Business"],
+    //   default: [],
+    //   index: true,
+    // },
+    guestType: {
       type: [String],
       enum: ["Family", "Couple", "Business"],
       default: [],
-      index: true,
+    },
+
+    stayType: {
+      type: [String],
+      enum: ["daily", "hourly"],
+      default: [],
     },
     propertyListType: {
       type: String,
@@ -60,6 +71,12 @@ const propertySchema = new Schema(
 
       minSixHoursPrice: { type: Number, default: 0 },
       maxSixHoursPrice: { type: Number, default: 0 },
+
+      minDateToDatePrice: { type: Number, default: 0 },
+      maxDateToDatePrice: { type: Number, default: 0 },
+
+      minOpenStayPrice: { type: Number, default: 0 },
+      maxOpenStayPrice: { type: Number, default: 0 },
     },
     screenNumber: {
       type: Number,

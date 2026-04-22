@@ -33,4 +33,5 @@ router.patch("/:id/discounts", updateRoomDiscounts);
 router.put("/:id/promo", updateRoomPromo);
 router.patch("/bulk/pricing", bulkUpdateRoomPricing);
 
+
 export default router;

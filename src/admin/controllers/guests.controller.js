@@ -901,7 +901,7 @@ export const listGuests = async (req, res) => {
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(Number(limit))
-        .select("firstName lastName phone role isVerified status createdAt"),
+        .select("firstName lastName phone city kycStatus wallet email role isVerified status createdAt"),
       User.countDocuments(filter),
     ]);
 

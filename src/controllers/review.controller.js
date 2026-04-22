@@ -336,8 +336,6 @@ export const deleteReview = async (req, res) => {
   }
 };
 
-
-
 export const getPropertyAllGuestReview = async (req, res) => {
   try {
     const { propertyId } = req.params;
@@ -357,6 +355,10 @@ export const getPropertyAllGuestReview = async (req, res) => {
     // ✅ Fetch paginated reviews
     const [reviews, totalReviews, avgData] = await Promise.all([
       Review.find({ propertyId, isPublished: true })
+        .populate({
+          path: "userId",
+          select: "firstName lastName email avatar", // choose fields you want
+        })
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limitNum)

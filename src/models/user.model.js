@@ -22,6 +22,7 @@ const userSchema = new mongoose.Schema(
     email: {
       type: String,
       trim: true,
+      unique: true
     },
     // phone: {
     //   type: String,
@@ -40,10 +41,22 @@ const userSchema = new mongoose.Schema(
       minlength: 6,
       select: false, // don’t return password unless explicitly asked
     },
+    username: {
+      type: String,
+      unique: true,
+      sparse: true,
+      lowercase: true,
+      trim: true,
+    },
     role: {
       type: String,
       enum: ["customer", "hotelier", "admin"],
       default: "customer",
+    },
+    roles: {
+      type: [String],
+      enum: ["customer", "hotelier", "admin"],
+      default: ["customer"],
     },
     provider: {
       type: String,
@@ -93,6 +106,30 @@ const userSchema = new mongoose.Schema(
       },
     ],
     kycNotes: { type: String, trim: true, default: "" },
+
+    // Bank Account — mirrors PropertyInfo.bankDetails + verification
+    bankDetails: {
+      name: { type: String, trim: true }, // Account holder name
+      accountNumber: { type: String, trim: true },
+      ifscCode: { type: String, trim: true },
+      bankName: { type: String, trim: true }, // e.g. "SBI", "HDFC"
+      accountType: {
+        type: String,
+        enum: ["Savings", "Current"],
+        default: "Savings",
+      },
+      // Verification
+      status: {
+        type: String,
+        enum: ["Pending", "Verified", "Rejected"],
+        default: "Pending",
+      },
+      remark: { type: String, default: "", trim: true },
+      verifiedAt: { type: Date },
+      // Optional: cancelled cheque / passbook image for proof
+      proofUrl: { type: String, trim: true },
+    },
+
     bypassAutoCheck: { type: Boolean, default: false },
     flags: { type: Number, default: 0 },
 
@@ -110,7 +147,7 @@ const userSchema = new mongoose.Schema(
     referredBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
-      index: true
+      index: true,
     },
 
     // Stores up to 4 uplines
@@ -118,7 +155,7 @@ const userSchema = new mongoose.Schema(
       {
         type: mongoose.Schema.Types.ObjectId,
         ref: "User",
-        index: true
+        index: true,
       },
     ],
 
@@ -146,7 +183,6 @@ userSchema.pre("save", async function (next) {
   this.password = await bcrypt.hash(this.password, salt);
   next();
 });
-
 
 // Auto generate referral code
 // userSchema.pre("save", function (next) {

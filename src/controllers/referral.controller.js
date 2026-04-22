@@ -3,21 +3,23 @@ import User from "../models/user.model.js";
 import WalletTransaction from "../models/walletTransaction.model.js";
 import mongoose from "mongoose";
 
-
-
 // ======================================================
 // REWARD PERCENTAGES PER LEVEL
 // ======================================================
 const REWARD_PERCENTS = {
   1: 5, // Level 1 → 5% of booking amount
-  2: 3, // Level 2 → 3%
-  3: 2, // Level 3 → 2%
+  2: 1, // Level 2 → 1%
+  3: 1, // Level 3 → 1%
   4: 1, // Level 4 → 1%
 };
 
 
+
 // ======================================================
-// 🔁 DISTRIBUTE REFERRAL REWARDS  (called inside createRoomBooking)
+// 🔁 DISTRIBUTE REFERRAL REWARDS
+// Scenario: E→D→C→B→A, booking made by A
+// A's referralPath: [B, C, D, E]
+// B gets level1 (5%), C gets level2 (1%), D gets level3 (1%), E gets level4 (1%)
 // ======================================================
 export const distributeReferralRewards = async (
   userId,
@@ -25,43 +27,77 @@ export const distributeReferralRewards = async (
   bookingAmount,
   session
 ) => {
-  try {
-    const user = await User.findById(userId).session(session);
+  if (!session) throw new Error("Session is required for referral rewards");
 
-    if (!user?.referralPath?.length) return;
+  const user = await User.findById(userId).session(session);
 
-const maxLevel = 4;
-    for (let i = 0; i <  Math.min(user.referralPath.length, maxLevel); i++) {
-      const level = i + 1;
-      const referrerId = user.referralPath[i];
-      const rewardAmount = parseFloat(
-        ((bookingAmount * REWARD_PERCENTS[level]) / 100).toFixed(2)
-      );
+  if (!user?.referralPath?.length) {
+    console.log("No referral path, skipping rewards");
+    return;
+  }
 
-      // Create referral reward record
-      await Referral.create(
-        [
-          {
+  // Cap at 4 levels
+  const uplines = user.referralPath.slice(0, 4);
+
+  console.log(`Processing rewards for booking by ${userId}`);
+  console.log(`Upline chain (level 1→${uplines.length}):`, uplines);
+
+  for (let i = 0; i < uplines.length; i++) {
+    const level = i + 1;         // 1-based level
+    const referrerId = uplines[i];
+    const percent = REWARD_PERCENTS[level];
+
+    const rewardAmount = parseFloat(
+      ((bookingAmount * percent) / 100).toFixed(2)
+    );
+
+    if (rewardAmount <= 0) {
+      console.log(`Level ${level}: reward is 0, skipping`);
+      continue;
+    }
+
+    console.log(`Level ${level}: ${referrerId} gets ${percent}% = ₹${rewardAmount}`);
+
+    try {
+      // ── Upsert referral record (duplicate-safe) ──────────────────────
+      const result = await Referral.updateOne(
+        { referrerId, refereeId: userId, bookingId, level },
+        {
+          $setOnInsert: {
             referrerId,
             refereeId: userId,
-            level,
             bookingId,
+            level,
             rewardAmount,
-            status: "paid",
-            paidAt: new Date(),
+            status: "Active",
           },
-        ],
-        { session }
+        },
+        { upsert: true, session }
       );
 
-      // Credit wallet transaction
+      // Already rewarded for this booking+level → skip
+      if (result.upsertedCount === 0) {
+        console.log(`⏭️ Duplicate reward skipped — level ${level}`);
+        continue;
+      }
+
+      // ── Get referrer's current wallet balance ─────────────────────────
+      const lastTxn = await WalletTransaction.findOne({ userId: referrerId })
+        .sort({ createdAt: -1 })
+        .session(session);
+
+      const currentBalance = lastTxn?.balanceAfter || 0;
+      const newBalance = parseFloat((currentBalance + rewardAmount).toFixed(2));
+
+      // ── Create wallet transaction ─────────────────────────────────────
       await WalletTransaction.create(
         [
           {
             userId: referrerId,
             type: "CREDIT",
+            source: `REFERRAL_LEVEL_${level}`,
             amount: rewardAmount,
-            description: `Level ${level} referral reward`,
+            balanceAfter: newBalance,
             status: "completed",
             bookingId,
           },
@@ -69,32 +105,50 @@ const maxLevel = 4;
         { session }
       );
 
-      // Increment wallet balance on user
+      // ── Update referrer's wallet summary ──────────────────────────────
       await User.findByIdAndUpdate(
         referrerId,
-        { $inc: { walletBalance: rewardAmount } },
+        {
+          $inc: {
+            "wallet.balance": rewardAmount,
+            "wallet.totalEarned": rewardAmount,
+            "referralStats.totalEarnings": rewardAmount,
+          },
+        },
         { session }
       );
+
+      console.log(`✅ Level ${level} reward ₹${rewardAmount} credited to ${referrerId}`);
+
+    } catch (err) {
+      console.error(`❌ Failed reward for level ${level}:`, err.message);
+      throw err; // keep transaction atomic
     }
-  } catch (error) {
-    // Don't throw — reward failure should not block booking
-    console.error("Referral reward distribution failed:", error.message);
   }
 };
 
 
 
-//  ========================================================
-//     Apply Referral Code
-//  ========================================================
+// ======================================================
+// 🔗 APPLY REFERRAL CODE
+// Builds referralPath correctly for up to 4 levels:
+//
+// When C applies B's code, and B's path is [A]:
+//   C's path = [B, A]          ← B is level1, A is level2
+//
+// When D applies C's code, and C's path is [B, A]:
+//   D's path = [C, B, A]       ← C=L1, B=L2, A=L3
+//
+// When E applies D's code, and D's path is [C, B, A]:
+//   E's path = [D, C, B, A]    ← D=L1, C=L2, B=L3, A=L4
+// ======================================================
 export const applyReferralCode = async (req, res) => {
   const session = await mongoose.startSession();
   session.startTransaction();
 
   try {
-    const userId = req.user.userId;   // from middleware
+    const userId = req.body.userId;
     const { referralCode } = req.body;
-
 
     if (!referralCode) {
       return res.status(400).json({ message: "Referral code is required" });
@@ -105,12 +159,10 @@ export const applyReferralCode = async (req, res) => {
       return res.status(404).json({ message: "User not found" });
     }
 
-    // Allow only once
     if (user.referredBy) {
       return res.status(400).json({ message: "Referral already applied" });
     }
 
-    // Admin restriction
     if (user.role === "admin") {
       return res.status(400).json({ message: "Admins cannot apply referral" });
     }
@@ -120,77 +172,58 @@ export const applyReferralCode = async (req, res) => {
       return res.status(400).json({ message: "Invalid referral code" });
     }
 
-    // Prevent self referral
+    // ── Self-referral check ───────────────────────────────────────────
     if (referrer._id.toString() === user._id.toString()) {
-      return res.status(400).json({
-        message: "You cannot use your own referral code",
-      });
+      return res.status(400).json({ message: "You cannot use your own referral code" });
     }
 
-    // Prevent circular referral (proper ObjectId check)
-    if (
-      referrer.referralPath?.some(
-        (id) => id.toString() === user._id.toString()
-      )
-    ) {
-      return res.status(400).json({
-        message: "Circular referral detected",
-      });
+    // ── Circular referral check ───────────────────────────────────────
+    // e.g. A tries to apply B's code but B is already under A
+    const isCircular = referrer.referralPath?.some(
+      (id) => id.toString() === user._id.toString()
+    );
+    if (isCircular) {
+      return res.status(400).json({ message: "Circular referral detected" });
     }
 
-    // Build 4-level path
-    let referralPath = [referrer._id];
+    // ── Build referralPath (max 4 levels) ─────────────────────────────
+    // [referrer, ...referrer's uplines] capped at 4
+    const referralPath = [
+      referrer._id,
+      ...(referrer.referralPath || []),
+    ].slice(0, 4);
 
-    if (referrer.referralPath?.length > 0) {
-      referralPath = [
-        ...referralPath,
-        ...referrer.referralPath.slice(0, 3),
-      ];
-    }
-
-    // Update current user
+    // ── Save to user ──────────────────────────────────────────────────
     user.referredBy = referrer._id;
     user.referralPath = referralPath;
-
     await user.save({ session });
 
-    // Update upline stats
+    // ── Increment level count for each upline ─────────────────────────
     for (let i = 0; i < referralPath.length; i++) {
       const level = i + 1;
-
       await User.updateOne(
         { _id: referralPath[i] },
-        {
-          $inc: {
-            [`referralStats.level${level}Count`]: 1,
-          },
-        },
+        { $inc: { [`referralStats.level${level}Count`]: 1 } },
         { session }
       );
     }
 
     await session.commitTransaction();
-    session.endSession();
 
     return res.status(200).json({
       success: true,
       message: "Referral applied successfully",
-      data: {
-        referredBy: referrer._id,
-        referralPath,
-      },
+      data: { referredBy: referrer._id, referralPath },
     });
 
   } catch (error) {
     await session.abortTransaction();
+    return res.status(500).json({ success: false, message: error.message });
+  } finally {
     session.endSession();
-
-    return res.status(500).json({
-      success: false,
-      message: error.message,
-    });
   }
 };
+
 
 
 // ======================================================
@@ -230,36 +263,34 @@ export const applyReferralCode = async (req, res) => {
 // };
 export const getReferralTree = async (req, res) => {
   try {
-    const userId = new mongoose.Types.ObjectId(req.user.userId);
+    const userId = req.params.userId;
 
     const referrals = await User.find({
       referralPath: userId,
-    }).select("firstName lastName referralCode referralPath");
+    }).select("firstName lastName referralCode referralPath wallet");
 
-    const formatted = referrals.map(user => ({
+    const formatted = referrals.map((user) => ({
       id: user._id,
       name: user.firstName + " " + user.lastName,
-      level: user.referralPath.indexOf(userId) + 1
+      level: user.referralPath.indexOf(userId) + 1,
     }));
 
     res.json({
       success: true,
       count: formatted.length,
-      data: formatted
+      data: formatted,
     });
-
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 };
-
 
 // ======================================================
 // 📊 GET REFERRAL STATS
 // ======================================================
 export const getReferralStats = async (req, res) => {
   try {
-    const userId = req.user.userId;
+    const userId = req.params.userId;
 
     const referrals = await User.find({
       referralPath: userId,
@@ -276,7 +307,7 @@ export const getReferralStats = async (req, res) => {
 
     referrals.forEach((user) => {
       const levelIndex = user.referralPath.findIndex(
-        (id) => id.toString() === userId.toString()
+        (id) => id.toString() === userId.toString(),
       );
 
       if (levelIndex !== -1) {
@@ -288,13 +319,10 @@ export const getReferralStats = async (req, res) => {
       success: true,
       data: stats,
     });
-
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
 };
-
-
 
 // ======================================================
 // 💰 GET EARNINGS SUMMARY
@@ -329,13 +357,10 @@ export const getEarningsSummary = async (req, res) => {
         thisMonth: monthly[0]?.total || 0,
       },
     });
-
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
 };
-
-
 
 // ======================================================
 // 🏆 GET LEADERBOARD
@@ -374,7 +399,6 @@ export const getLeaderboard = async (req, res) => {
       success: true,
       data: leaderboard,
     });
-
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }

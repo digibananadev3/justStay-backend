@@ -3,6 +3,7 @@ import Offer from "../../models/offer.model.js";
 import User from "../../models/user.model.js";
 import RoomBooking from "../../models/roomBooking.model.js";
 import PropertyInfo from "../../models/property.model.js";
+import PropertyRoom from "../../models/propertyRoom.model.js";
 
 /**
  * @desc    Get summary of guest's offers
@@ -246,108 +247,57 @@ export const createOffer = async (req, res) => {
       validUntil,
       promoCode,
       usageLimit,
-      properties,
+      properties,       // array of property IDs
+      roomTypes,        // optional: array of room types to target
       tags,
     } = req.body;
 
-
+    // 1️⃣ Validate user ID
     if (!mongoose.Types.ObjectId.isValid(userId)) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Invalid user ID" });
+      return res.status(400).json({ success: false, message: "Invalid user ID" });
     }
 
-    if (
-      !title ||
-      !discountType ||
-      discountValue === undefined ||
-      !validFrom ||
-      !validUntil
-    ) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Missing required fields" });
+    const user = await User.findById(userId);
+    if (!user || !["hotelier", "admin"].includes(user.role)) {
+      return res.status(404).json({ success: false, message: "Hotelier or Admin not found" });
+    }
+
+    // 2️⃣ Validate required fields
+    if (!title || !discountType || discountValue === undefined || !validFrom || !validUntil) {
+      return res.status(400).json({ success: false, message: "Missing required fields" });
     }
 
     if (
       discountType === "percentage" &&
       (discountValue < 0 || discountValue > 100)
     ) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "Percentage discount must be between 0 and 100",
-        });
+      return res.status(400).json({ success: false, message: "Percentage discount must be 0-100" });
     }
 
     if (discountType === "fixed" && discountValue < 0) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "Fixed discount must be a positive number",
-        });
+      return res.status(400).json({ success: false, message: "Fixed discount must be positive" });
     }
 
-    if (
-      discountType === "free_night" &&
-      (discountValue < 1 || !Number.isInteger(discountValue))
-    ) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "Free night discount must be an integer greater than 0",
-        });
+    if (discountType === "free_night" && (!Number.isInteger(discountValue) || discountValue < 1)) {
+      return res.status(400).json({ success: false, message: "Free night must be an integer > 0" });
     }
 
-
-    if(properties && !Array.isArray(properties)) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "Properties must be an array of property IDs",
-        });
+    // 3️⃣ Validate properties
+    if (properties && !Array.isArray(properties)) {
+      return res.status(400).json({ success: false, message: "Properties must be an array" });
     }
 
-
-//  Check every property id of the properties array exists in the database
-    if (properties && properties.length > 0) {
-      for (const propertyId of properties) {
-        if (!mongoose.Types.ObjectId.isValid(propertyId)) {
-          return res
-            .status(400)
-            .json({
-              success: false,
-              message: `Invalid property ID: ${propertyId}`,
-            });
-        }
-
-
-        // Optionally, you can also check if the property exists in the database
-        const propertyExists = await PropertyInfo.findById(propertyId);
-        if (!propertyExists) {
-          return res
-            .status(400)
-            .json({
-              success: false,
-              message: `Property not found for ID: ${propertyId}`,
-            });
-        }
+    for (const propertyId of properties || []) {
+      if (!mongoose.Types.ObjectId.isValid(propertyId)) {
+        return res.status(400).json({ success: false, message: `Invalid property ID: ${propertyId}` });
+      }
+      const propertyExists = await PropertyInfo.findById(propertyId);
+      if (!propertyExists) {
+        return res.status(400).json({ success: false, message: `Property not found: ${propertyId}` });
       }
     }
 
-    const user = await User.findById(userId);
-
-
-    if (!user || user.role !== "hotelier" && user.role !== "admin") {
-      return res
-        .status(404)
-        .json({ success: false, message: "Hotelier or Admin not found" });
-    }
-
+    // 4️⃣ Create the Offer
     const offer = await Offer.create({
       userId,
       title,
@@ -362,17 +312,38 @@ export const createOffer = async (req, res) => {
       usageLimit,
       properties,
       tags,
-      metadata: {
-        createdBy: userId,
-      },
+      metadata: { createdBy: userId },
     });
 
-    res.status(201).json({
-      success: true,
-      message: "Offer created successfully",
-      data: offer,
-    });
+    // 5️⃣ Apply Offer to PropertyRooms
+    if (properties && properties.length > 0) {
+      const roomFilter = { propertyId: { $in: properties } };
+      if (roomTypes && roomTypes.length > 0) {
+        roomFilter.type = { $in: roomTypes };
+      }
+
+      const updatePromo = {
+        "promo.code": promoCode,
+        "promo.isActive": true,
+        "promo.validFrom": validFrom,
+        "promo.validTo": validUntil,
+      };
+
+      if (discountType === "percentage") {
+        updatePromo["promo.discountPercent"] = discountValue;
+      } else if (discountType === "fixed") {
+        updatePromo["promo.discountFixed"] = discountValue; // make sure PropertyRoom schema has this field
+      } else if (discountType === "free_night") {
+        updatePromo["promo.freeNights"] = discountValue; // make sure PropertyRoom schema has this field
+      }
+
+      await PropertyRoom.updateMany(roomFilter, { $set: updatePromo });
+    }
+
+    res.status(201).json({ success: true, message: "Offer created and applied to rooms", data: offer });
+
   } catch (error) {
+    console.error(error);
     res.status(500).json({ success: false, message: error.message });
   }
 };

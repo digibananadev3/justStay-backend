@@ -4,6 +4,11 @@ import RoomInventory from "../models/roomInventory.model.js";
 import RoomBooking from "../models/roomBooking.model.js";
 import Offer from "../models/offer.model.js";
 import rewardService from "../services/reward.service.js";
+import { distributeReferralRewards } from "./referral.controller.js";
+import { createNotification } from "./notification.controller.js";
+import User from "../models/user.model.js";
+import PropertyInfo from "../models/property.model.js";
+// import { distributeReferralRewards } from "../services/reward.service.js";
 
 const timeToMinutes = (t) => {
   const [h, m] = t.split(":").map(Number);
@@ -67,6 +72,86 @@ function getBookedRoomsFromInventory(inventory, timeRange = null) {
   return booked;
 }
 
+
+// ─────────────────────────────────────────────────────────────────────────────
+// HELPER: Send booking notifications to guest, property owner, and all admins
+// ─────────────────────────────────────────────────────────────────────────────
+async function sendBookingNotifications(booking, session) {
+  try {
+    const {
+      _id: bookingId,
+      bookingCode,
+      userId,
+      propertyId,
+      plan,
+      stayDetails,
+      priceSummary,
+    } = booking;
+
+    const roomNumber   = stayDetails?.roomNumber || "N/A";
+    const checkInDate  = stayDetails?.checkInDate
+      ? new Date(stayDetails.checkInDate).toDateString()
+      : "N/A";
+    const totalAmount  = priceSummary?.totalAmount ?? 0;
+
+    const planLabel = {
+      "3hr"          : "3 Hours",
+      "6hr"          : "6 Hours",
+      "night"        : "One Night",
+      "date-to-date" : "Date to Date",
+      "open-stay"    : "Open Stay",
+    }[plan] || plan;
+
+    // ── 1. GUEST ────────────────────────────────────────────────────────────
+    await createNotification({
+      userId,
+      title   : "Booking Confirmed 🎉",
+      message : `Your booking (${bookingCode}) for a ${planLabel} stay is confirmed. Room: ${roomNumber}, Check-in: ${checkInDate}. Total: ₹${totalAmount}.`,
+      type    : "booking",
+      category: "booking",
+      link    : `/bookings/${bookingId}`,
+      meta    : { bookingId, bookingCode, plan },
+    });
+
+    // ── 2. PROPERTY OWNER ───────────────────────────────────────────────────
+    const property = await PropertyInfo.findById(propertyId)
+      .select("userId basicPropertyDetails.name")
+      .session(session);
+
+    if (property?.userId) {
+      await createNotification({
+        userId  : property.userId,
+        title   : "New Booking Received 🏨",
+        message : `A new ${planLabel} booking (${bookingCode}) has been made at ${property.basicPropertyDetails?.name || "your property"}. Room: ${roomNumber}, Check-in: ${checkInDate}. Amount: ₹${totalAmount}.`,
+        type    : "booking",
+        category: "booking",
+        link    : `/property/bookings/${bookingId}`,
+        meta    : { bookingId, bookingCode, plan, propertyId },
+      });
+    }
+
+    // ── 3. ALL ADMINS ───────────────────────────────────────────────────────
+    const admins = await User.find({ role: "admin" }).select("_id").lean();
+
+    await Promise.allSettled(
+      admins.map((admin) =>
+        createNotification({
+          userId  : admin._id,
+          title   : "New Booking Alert 📋",
+          message : `Booking ${bookingCode} placed for a ${planLabel} stay at property ${propertyId}. Room: ${roomNumber}, Check-in: ${checkInDate}. Total: ₹${totalAmount}.`,
+          type    : "booking",
+          category: "admin",
+          link    : `/admin/bookings/${bookingId}`,
+          meta    : { bookingId, bookingCode, plan, propertyId, userId },
+        })
+      )
+    );
+
+  } catch (err) {
+    console.error("Booking notification failed (non-blocking):", err.message);
+  }
+}
+
 // ======================================================
 // CREATE ROOM BOOKING
 // ======================================================
@@ -107,8 +192,7 @@ export const createRoomBooking = async (req, res) => {
       specialRequests,
     } = req.body;
 
-
-    console.log("req.body:", req.body);
+    // console.log("req.body:", req.body);
 
     // -------------------------------------------------
     // VALIDATION
@@ -175,7 +259,7 @@ export const createRoomBooking = async (req, res) => {
         break;
       case "night":
         stayType = "oneNight";
-        duration = 720;
+        duration = null; // ✅ FIX: was 720 — night checkout is always fixed 10:00 AM, not duration-based
         break;
       case "date-to-date":
         stayType = "dateToDate";
@@ -203,7 +287,33 @@ export const createRoomBooking = async (req, res) => {
         .json({ success: false, message: "Pricing configuration error" });
     }
 
-    const basePrice = room.pricing[stayType][mealType];
+    // ================================================
+    //    calculate the price of the multi night stay
+    // ================================================
+    const basePricePerUnit = room.pricing[stayType][mealType];
+
+    // Calculate number of nights for date-to-date
+    let numberOfNights = 1;
+    if (plan === "date-to-date") {
+      const startDate = new Date(`${date}T00:00:00.000Z`);
+      const endDate = new Date(`${checkOutDate}T00:00:00.000Z`);
+      numberOfNights = Math.round(
+        (endDate - startDate) / (1000 * 60 * 60 * 24),
+      );
+
+      if (numberOfNights < 1) {
+        await session.abortTransaction();
+        return res.status(400).json({
+          success: false,
+          message: "Check-out date must be after check-in date",
+        });
+      }
+    }
+
+    // const basePrice = room.pricing[stayType][mealType];
+    const basePrice = parseFloat(
+      (basePricePerUnit * numberOfNights).toFixed(2),
+    );
     const discountPercent = room.discounts?.[`${stayType}Percent`] || 0;
     const discountAmount = parseFloat(
       ((basePrice * discountPercent) / 100).toFixed(2),
@@ -218,6 +328,15 @@ export const createRoomBooking = async (req, res) => {
     let offerDoc = null;
 
     if (couponCode) {
+      // Block coupon usage for open-stay (no total amount at booking time)
+      if (plan === "open-stay") {
+        await session.abortTransaction();
+        return res.status(400).json({
+          success: false,
+          message: "Coupons cannot be applied to open-stay bookings",
+        });
+      }
+
       offerDoc = await Offer.findOne({
         promoCode: couponCode.toUpperCase(),
         isActive: true,
@@ -225,16 +344,18 @@ export const createRoomBooking = async (req, res) => {
 
       if (!offerDoc) {
         await session.abortTransaction();
-        return res
-          .status(400)
-          .json({ success: false, message: "Invalid or expired promo code" });
+        return res.status(400).json({
+          success: false,
+          message: "Invalid or expired promo code",
+        });
       }
 
       if (offerDoc.usageLimit && offerDoc.usedCount >= offerDoc.usageLimit) {
         await session.abortTransaction();
-        return res
-          .status(400)
-          .json({ success: false, message: "Promo code usage limit reached" });
+        return res.status(400).json({
+          success: false,
+          message: "Promo code usage limit reached",
+        });
       }
 
       if (offerDoc.properties?.length > 0) {
@@ -250,7 +371,8 @@ export const createRoomBooking = async (req, res) => {
         }
       }
 
-      if (offerDoc.minAmount && finalRoomPrice < offerDoc.minAmount) {
+      // ✅ FIX: check minAmount against basePrice (original price before any discount)
+      if (offerDoc.minAmount && basePrice < offerDoc.minAmount) {
         await session.abortTransaction();
         return res.status(400).json({
           success: false,
@@ -263,9 +385,14 @@ export const createRoomBooking = async (req, res) => {
       } else if (offerDoc.discountType === "fixed") {
         couponDiscount = offerDoc.discountValue;
       } else if (offerDoc.discountType === "free_night") {
-        couponDiscount = finalRoomPrice;
+        // couponDiscount = finalRoomPrice; // full room price waived
+        couponDiscount =
+          plan === "date-to-date"
+            ? basePricePerUnit // one night's rate
+            : finalRoomPrice; // other plans: full price waived (single night anyway)
       }
 
+      // Cap coupon discount at finalRoomPrice — can never discount more than the room costs
       couponDiscount = parseFloat(
         Math.min(couponDiscount, finalRoomPrice).toFixed(2),
       );
@@ -279,21 +406,29 @@ export const createRoomBooking = async (req, res) => {
     // -------------------------------------------------
     // FINAL PRICE CALCULATION
     // -------------------------------------------------
+    const roomDiscount = discountAmount; // from room-level discount %
     const totalDiscount = parseFloat(
-      (discountAmount + couponDiscount).toFixed(2),
+      (roomDiscount + couponDiscount).toFixed(2),
     );
-    const priceAfterDiscount = finalRoomPrice - couponDiscount;
+    const priceAfterDiscount = parseFloat(
+      (finalRoomPrice - couponDiscount).toFixed(2),
+    ); // finalRoomPrice is already after roomDiscount
     const tax = parseFloat((priceAfterDiscount * 0.12).toFixed(2));
-    const platformFee = 50;
+
+    // ✅ FIX: no platform fee for free_night coupon (priceAfterDiscount === 0)
+    const platformFee = priceAfterDiscount === 0 ? 0 : 50;
+
     const totalAmount = parseFloat(
       (priceAfterDiscount + tax + platformFee).toFixed(2),
     );
 
     const priceSummary = {
-      roomPrice: basePrice,
+      roomPrice: basePrice, // always original price for receipt clarity
       foodPrice: 0,
       taxAndServiceFees: plan === "open-stay" ? 0 : tax,
-      discount: totalDiscount,
+      roomDiscount: roomDiscount, // ✅ FIX: stored separately
+      couponDiscount: couponDiscount, // ✅ FIX: stored separately
+      discount: totalDiscount, // total combined discount
       platformFee: plan === "open-stay" ? 0 : platformFee,
       totalAmount: plan === "open-stay" ? 0 : totalAmount,
     };
@@ -307,6 +442,8 @@ export const createRoomBooking = async (req, res) => {
 
     // -------------------------------------------------
     // TIME + SLOT CALCULATION
+    // ✅ FIX: each plan handled in its own block — no more shared duration block
+    //         that overwrote correct values with wrong ones.
     // -------------------------------------------------
     let slotEndTime = null;
     let nightCheckOutTime = null;
@@ -314,29 +451,39 @@ export const createRoomBooking = async (req, res) => {
     let expectedCheckOutTime = null;
     let checkoutDate = null;
 
-    if (duration !== null && checkInTime) {
+    if (["3hr", "6hr"].includes(plan) && checkInTime) {
+      // Hourly: duration-based, handles midnight overflow correctly.
+      // minutesToTime does % 24 internally so "26:00" becomes "02:00".
       const startMin = timeToMinutes(checkInTime);
       const endMin = startMin + duration;
-      const endTime = minutesToTime(endMin);
 
       checkoutDate =
         endMin >= 1440
           ? new Date(invDate.getTime() + 24 * 60 * 60 * 1000)
           : invDate;
 
-      if (isHourly) {
-        slotEndTime = endTime;
-      } else if (plan === "night") {
-        nightCheckOutTime = endTime;
-        expectedCheckOutDate = checkoutDate;
-        expectedCheckOutTime = endTime;
-      }
+      slotEndTime = minutesToTime(endMin);
+      expectedCheckOutDate = checkoutDate;
+      expectedCheckOutTime = slotEndTime;
+    }
+
+    if (plan === "night") {
+      // ✅ FIX: always next day 10:00 AM — never checkInTime + 720 min.
+      // e.g. 23:00 check-in was giving "11:00" next day instead of "10:00".
+      checkoutDate = new Date(invDate.getTime() + 24 * 60 * 60 * 1000);
+      nightCheckOutTime = "10:00";
+      expectedCheckOutDate = checkoutDate;
+      expectedCheckOutTime = "10:00";
     }
 
     if (plan === "date-to-date") {
+      // ✅ FIX: expectedCheckOutTime was never set — now fixed to 12:00.
       expectedCheckOutDate = new Date(`${checkOutDate}T00:00:00.000Z`);
       checkoutDate = expectedCheckOutDate;
+      expectedCheckOutTime = "12:00";
     }
+
+    // open-stay: all null intentionally — price/duration calculated at actual checkout.
 
     // ═══════════════════════════════════════════════════════════════════════
     // INVENTORY CHECK & ROOM NUMBER ASSIGNMENT
@@ -695,8 +842,32 @@ export const createRoomBooking = async (req, res) => {
       );
     }
 
+    console.log("plan", plan);
+    console.log("priceSummary", priceSummary);
+    // -------------------------------------------------
+    // DISTRIBUTE REFERRAL REWARDS
+    // -------------------------------------------------
+    if (plan !== "open-stay" && priceSummary.totalAmount > 0) {
+      try {
+        console.log("userId", userId);
+        console.log("bookingId", bookingId);
+        console.log("priceSummary", priceSummary);
+        await distributeReferralRewards(
+          userId,
+          bookingId,
+          priceSummary.totalAmount,
+          session,
+        );
+      } catch (err) {
+        console.error("Referral reward failed (non-blocking):", err.message);
+      }
+    }
+
+    // await session.commitTransaction();
+
+      await sendBookingNotifications(booking[0], session);
     await session.commitTransaction();
-    session.endSession();
+    // session.endSession();
 
     return res.status(201).json({
       success: true,
@@ -704,13 +875,18 @@ export const createRoomBooking = async (req, res) => {
       data: booking[0],
     });
   } catch (error) {
-    await session.abortTransaction();
-    session.endSession();
+    if (session.inTransaction()) {
+      await session.abortTransaction(); // ✅ safe
+    }
+    // session.endSession();
+
     return res.status(500).json({
       success: false,
       message: "Booking failed",
       error: error.message,
     });
+  } finally {
+    session.endSession(); // ✅ always runs
   }
 };
 
@@ -804,7 +980,6 @@ export const getAllRoomBookings = async (req, res) => {
   }
 };
 
-
 // ======================================================
 // GET BOOKINGS OF A SPECIFIC ROOM (can be enhanced with date filtering to show only overlapping bookings)
 // ======================================================
@@ -816,7 +991,7 @@ export const getAllBookedSlotsForRoom = async (req, res) => {
       return res
         .status(400)
         .json({ success: false, message: "Invalid roomId" });
-        
+
     const bookings = await RoomBooking.find({ roomId })
       .populate("userId", "firstName lastName email phone")
       .populate("propertyId", "basicPropertyDetails.name propertyType")
@@ -825,8 +1000,7 @@ export const getAllBookedSlotsForRoom = async (req, res) => {
     res
       .status(200)
       .json({ success: true, count: bookings.length, data: bookings });
-  }
-    catch (error) {
+  } catch (error) {
     console.error(error);
     res
       .status(500)
@@ -979,9 +1153,6 @@ export const getUserBookings = async (req, res) => {
   }
 };
 
-
-
-
 // ======================================================
 // GUEST CHECK-IN FORM (Manual Check-In with Full Details)
 // ======================================================
@@ -1082,7 +1253,8 @@ export const guestCheckInForm = async (req, res) => {
     // -------------------------------------------------
     booking.guestDetails = {
       name,
-      fatherOrSpouseName: fatherOrSpouseName || booking.guestDetails?.fatherOrSpouseName,
+      fatherOrSpouseName:
+        fatherOrSpouseName || booking.guestDetails?.fatherOrSpouseName,
       gender: gender || booking.guestDetails?.gender,
       age: age !== undefined ? Number(age) : booking.guestDetails?.age,
       address: address || booking.guestDetails?.address,
@@ -1107,21 +1279,25 @@ export const guestCheckInForm = async (req, res) => {
     // -------------------------------------------------
     // UPDATE STAY DETAILS
     // -------------------------------------------------
-    if(booking)
-    if (roomNumber && booking.stayDetails.roomNumber == roomNumber) booking.stayDetails.roomNumber = roomNumber;
-    if (roomType && booking.stayDetails.roomType == roomNumber) booking.stayDetails.roomType = roomType;
+    if (booking)
+      if (roomNumber && booking.stayDetails.roomNumber == roomNumber)
+        booking.stayDetails.roomNumber = roomNumber;
+    if (roomType && booking.stayDetails.roomType == roomNumber)
+      booking.stayDetails.roomType = roomType;
     if (adults !== undefined) booking.stayDetails.adults = Number(adults);
     if (children !== undefined) booking.stayDetails.children = Number(children);
     if (purposeOfVisit) booking.stayDetails.purposeOfVisit = purposeOfVisit;
 
     if (checkInDate) {
-      booking.stayDetails.checkInDate = new Date(`${checkInDate}T00:00:00.000Z`);
+      booking.stayDetails.checkInDate = new Date(
+        `${checkInDate}T00:00:00.000Z`,
+      );
     }
     if (checkInTime) booking.stayDetails.checkInTime = checkInTime;
 
     if (expectedCheckOutDate) {
       booking.stayDetails.expectedCheckOutDate = new Date(
-        `${expectedCheckOutDate}T00:00:00.000Z`
+        `${expectedCheckOutDate}T00:00:00.000Z`,
       );
     }
     if (expectedCheckOutTime) {
@@ -1143,7 +1319,8 @@ export const guestCheckInForm = async (req, res) => {
     // -------------------------------------------------
     // OPTIONAL FIELDS
     // -------------------------------------------------
-    if (specialRequests !== undefined) booking.specialRequests = specialRequests;
+    if (specialRequests !== undefined)
+      booking.specialRequests = specialRequests;
     if (adminNotes !== undefined) booking.adminNotes = adminNotes;
 
     // -------------------------------------------------
@@ -1172,6 +1349,402 @@ export const guestCheckInForm = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Check-in failed",
+      error: error.message,
+    });
+  }
+};
+
+// ======================================================================================
+//    CANCEL BOOKING CONTROLLER FUNCTION AND UTILITY FUNCTION RELATED TO THE CANCEL BOOKING
+// ======================================================================================
+
+// -----------------------------------------------------
+// HELPER: Build Check-in DateTime (LOCAL TIME SAFE)
+// -----------------------------------------------------
+function getCheckInDateTime(checkInDate, checkInTime) {
+  const dt = new Date(checkInDate);
+
+  if (checkInTime) {
+    const [h, m] = checkInTime.split(":").map(Number);
+    dt.setHours(h, m, 0, 0); // ✅ LOCAL TIME (FIXED)
+  } else {
+    dt.setHours(14, 0, 0, 0); // default 2 PM
+  }
+
+  return dt;
+}
+
+// -----------------------------------------------------
+// REFUND CALCULATION
+// -----------------------------------------------------
+function calculateRefund(plan, checkInDate, checkInTime, priceSummary) {
+  const totalPaid = priceSummary.totalAmount || 0;
+
+  if (plan === "open-stay") {
+    return {
+      refundAmount: 0,
+      refundPercent: 0,
+      reason: "Open-stay has no prepaid amount",
+    };
+  }
+
+  const checkInDateTime = getCheckInDateTime(checkInDate, checkInTime);
+  const now = new Date();
+
+  const diffHours = (checkInDateTime - now) / (1000 * 60 * 60);
+
+  // ❌ After check-in
+  if (diffHours <= 0) {
+    return {
+      refundAmount: 0,
+      refundPercent: 0,
+      reason: "Past check-in time — no refund",
+    };
+  }
+
+  // ❌ HARD STOP (15 min rule)
+  if (diffHours < 0.25) {
+    return {
+      refundAmount: 0,
+      refundPercent: 0,
+      reason: "Cancellation window closed (less than 15 minutes left)",
+    };
+  }
+
+  // -------------------------
+  // PLAN RULES
+  // -------------------------
+  if (plan === "3hr") {
+    if (diffHours >= 2) {
+      return {
+        refundAmount: totalPaid,
+        refundPercent: 100,
+        reason: "Full refund",
+      };
+    } else if (diffHours >= 1) {
+      return {
+        refundAmount: +(totalPaid * 0.5).toFixed(2),
+        refundPercent: 50,
+        reason: "50% refund",
+      };
+    }
+    return { refundAmount: 0, refundPercent: 0, reason: "No refund" };
+  }
+
+  if (plan === "6hr") {
+    if (diffHours >= 3) {
+      return {
+        refundAmount: totalPaid,
+        refundPercent: 100,
+        reason: "Full refund",
+      };
+    } else if (diffHours >= 1) {
+      return {
+        refundAmount: +(totalPaid * 0.5).toFixed(2),
+        refundPercent: 50,
+        reason: "50% refund",
+      };
+    }
+    return { refundAmount: 0, refundPercent: 0, reason: "No refund" };
+  }
+
+  if (plan === "night") {
+    if (diffHours >= 24) {
+      return {
+        refundAmount: totalPaid,
+        refundPercent: 100,
+        reason: "Full refund",
+      };
+    }
+    return { refundAmount: 0, refundPercent: 0, reason: "No refund" };
+  }
+
+  if (plan === "date-to-date") {
+    if (diffHours >= 48) {
+      return {
+        refundAmount: totalPaid,
+        refundPercent: 100,
+        reason: "Full refund",
+      };
+    } else if (diffHours >= 24) {
+      const oneNight = priceSummary.roomPrice || 0;
+      const refundAmount = Math.max(0, totalPaid - oneNight);
+
+      return {
+        refundAmount,
+        refundPercent: +((refundAmount / totalPaid) * 100).toFixed(2),
+        reason: "1 night charged",
+      };
+    }
+    return { refundAmount: 0, refundPercent: 0, reason: "No refund" };
+  }
+
+  return { refundAmount: 0, refundPercent: 0, reason: "Unknown plan" };
+}
+
+// -----------------------------------------------------
+// RELEASE INVENTORY (FIXED)
+// -----------------------------------------------------
+async function releaseInventory(booking, session) {
+  const { plan, stayDetails } = booking;
+  const { roomNumber, checkInDate, expectedCheckOutDate } = stayDetails;
+  const roomId = booking.roomId;
+
+  const invDate = new Date(checkInDate);
+
+  if (["3hr", "6hr"].includes(plan)) {
+    await RoomInventory.updateOne(
+      { roomId, date: invDate },
+      {
+        $pull: {
+          timeBlocks: { bookingId: booking._id },
+          bookedRoomNumbers: roomNumber, // ✅ FIX
+        },
+      },
+      { session },
+    );
+  } else if (plan === "night") {
+    await RoomInventory.updateOne(
+      { roomId, date: invDate },
+      {
+        $set: {
+          "nightBlock.isBooked": false,
+          "nightBlock.bookingId": null,
+          "nightBlock.roomNumber": null,
+          "nightBlock.checkOutTime": null,
+        },
+        $pull: { bookedRoomNumbers: roomNumber }, // ✅ FIX
+      },
+      { session },
+    );
+  } else if (plan === "date-to-date") {
+    const dates = [];
+    for (
+      let d = new Date(checkInDate);
+      d < new Date(expectedCheckOutDate);
+      d.setDate(d.getDate() + 1)
+    ) {
+      dates.push(new Date(d));
+    }
+
+    await RoomInventory.updateMany(
+      { roomId, date: { $in: dates } },
+      {
+        $set: {
+          "dateToDateLock.isBooked": false,
+          "dateToDateLock.bookingId": null,
+          "dateToDateLock.roomNumber": null,
+        },
+        $pull: { bookedRoomNumbers: roomNumber }, // ✅ FIX
+      },
+      { session },
+    );
+  }
+}
+
+// -----------------------------------------------------
+// MAIN CONTROLLER
+// -----------------------------------------------------
+export const cancelRoomBooking = async (req, res) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
+  try {
+    const { bookingId } = req.params;
+    const userId = req.body.userId;
+
+    const booking = await RoomBooking.findById(bookingId).session(session);
+
+    if (!booking) throw new Error("Booking not found");
+
+    if (String(booking.userId) !== String(userId)) {
+      throw new Error("Unauthorized");
+    }
+
+    if (booking.status !== "Booked") {
+      throw new Error(`Cannot cancel booking with status ${booking.status}`);
+    }
+
+    // -------------------------
+    // REFUND
+    // -------------------------
+    const { refundAmount, refundPercent, reason } = calculateRefund(
+      booking.plan,
+      booking.stayDetails.checkInDate,
+      booking.stayDetails.checkInTime,
+      booking.priceSummary,
+    );
+
+    // -------------------------
+    // INVENTORY RELEASE
+    // -------------------------
+    await releaseInventory(booking, session);
+
+    // -------------------------
+    // UPDATE BOOKING
+    // -------------------------
+    booking.status = "Cancel"; // ✅ FIXED ENUM
+    booking.cancelledAt = new Date();
+
+    booking.refund = {
+      status: refundAmount > 0 ? "processed" : "none",
+      amount: refundAmount,
+      reason,
+      processedAt: new Date(),
+    };
+
+    // ✅ FIXED PAYMENT STATUS
+    if (refundAmount >= booking.priceSummary.totalAmount) {
+      booking.paymentStatus = "refunded";
+    } else if (refundAmount > 0) {
+      booking.paymentStatus = "partial";
+    }
+
+    await booking.save({ session });
+
+    await session.commitTransaction();
+    session.endSession();
+
+    return res.status(200).json({
+      success: true,
+      message: "Booking cancelled successfully",
+      data: {
+        bookingId: booking._id,
+        status: booking.status,
+        refund: booking.refund,
+        paymentStatus: booking.paymentStatus,
+      },
+    });
+  } catch (error) {
+    await session.abortTransaction();
+    session.endSession();
+
+    return res.status(400).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+// ------------------------------------------------------
+// GET Property Stats of Specific Property
+// ------------------------------------------------------
+export const getPropertyStats = async (req, res) => {
+  try {
+    const { propertyId } = req.params;
+    const { startDate, endDate } = req.query;
+
+    if (!mongoose.Types.ObjectId.isValid(propertyId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid propertyId",
+      });
+    }
+
+    const start = startDate ? new Date(startDate) : new Date("2000-01-01");
+    const end = endDate ? new Date(endDate) : new Date();
+
+    // ======================================================
+    // 1. TOTAL ROOMS
+    // ======================================================
+    const rooms = await PropertyRoom.find({ propertyId });
+    const totalRooms = rooms.reduce(
+      (sum, room) => sum + (room.roomNumbers?.length || 0),
+      0,
+    );
+
+    // Total days in range
+    const totalDays = Math.ceil((end - start) / (1000 * 60 * 60 * 24)) || 1;
+
+    const totalAvailableRoomNights = totalRooms * totalDays;
+
+    // ======================================================
+    // 2. FETCH BOOKINGS
+    // ======================================================
+    const bookings = await RoomBooking.find({
+      propertyId,
+      status: { $ne: "Cancel" },
+      createdAt: { $gte: start, $lte: end },
+    });
+
+    // ======================================================
+    // 3. TOTAL BOOKINGS
+    // ======================================================
+    const totalBookings = bookings.length;
+
+    // ======================================================
+    // 4. TOTAL REVENUE
+    // ======================================================
+    const totalRevenue = bookings.reduce((sum, b) => {
+      if (b.paymentStatus === "paid") {
+        return sum + (b.priceSummary?.totalAmount || 0);
+      }
+      return sum;
+    }, 0);
+
+    // ======================================================
+    // 5. OCCUPANCY CALCULATION
+    // ======================================================
+    let totalBookedRoomNights = 0;
+
+    bookings.forEach((b) => {
+      const checkIn = b.stayDetails?.checkInDate;
+      const checkOut =
+        b.stayDetails?.expectedCheckOutDate || b.actualCheckOutAt;
+
+      if (!checkIn) return;
+
+      switch (b.plan) {
+        case "night":
+          totalBookedRoomNights += 1;
+          break;
+
+        case "date-to-date":
+        case "open-stay":
+          if (checkOut) {
+            const days = Math.max(
+              1,
+              Math.ceil((checkOut - checkIn) / (1000 * 60 * 60 * 24)),
+            );
+            totalBookedRoomNights += days;
+          }
+          break;
+
+        case "3hr":
+        case "6hr":
+          // You can tune this weight
+          totalBookedRoomNights += 0.25;
+          break;
+
+        default:
+          break;
+      }
+    });
+
+    const occupancyRate =
+      totalAvailableRoomNights > 0
+        ? (totalBookedRoomNights / totalAvailableRoomNights) * 100
+        : 0;
+
+    // ======================================================
+    // RESPONSE
+    // ======================================================
+    return res.status(200).json({
+      success: true,
+      data: {
+        totalRooms,
+        totalBookings,
+        totalRevenue: Number(totalRevenue.toFixed(2)),
+        occupancyRate: Number(occupancyRate.toFixed(2)),
+        totalBookedRoomNights,
+        totalAvailableRoomNights,
+      },
+    });
+  } catch (error) {
+    console.error("Property stats error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch property stats",
       error: error.message,
     });
   }

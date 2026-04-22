@@ -33,7 +33,7 @@ import amenitiesRoutes from "./admin/routes/amenities.routes.js";
 import foodRoutes from "./routes/food.routes.js";
 import referralRoutes from "./routes/referral.routes.js";
 import favoriteRoutes from "./routes/favorite.routes.js"
-
+import walletRoutes from "./routes/wallet.route.js"
 
 
 
@@ -89,6 +89,8 @@ app.use("/api/referral", referralRoutes);
 
 // Favourite API
 app.use("/api/favorite", favoriteRoutes);
+
+app.use("/api/wallet", walletRoutes);
 
 // Global Error Handler
 app.use(errorMiddleware);
